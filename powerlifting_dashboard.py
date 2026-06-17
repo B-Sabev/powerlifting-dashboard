@@ -75,8 +75,8 @@ def estimate_e1rm(row) -> float | None:
     weight = row["weight_kg"]
     rpe = row["Completed RPE"]  # may be NaN
 
-    if reps >= 5:
-        return None  # ignore — not estimating 1RM from 5+ reps
+    if reps > 5:
+        return None  # ignore — not estimating 1RM from 6+ reps
 
     if reps == 1:
         rpe = float(rpe) if pd.notna(rpe) else 9.0   # default RPE 9 if missing
@@ -84,7 +84,7 @@ def estimate_e1rm(row) -> float | None:
         rpe = max(7.0, min(rpe, 10.0))                # clamp to table range
         return weight / RTS_TABLE[(1, rpe)]
 
-    # reps 2–4: Epley
+    # reps 2–5: Epley
     return weight * (1 + reps / 30)
 
 
@@ -120,7 +120,7 @@ def load_training(path: Path) -> pd.DataFrame:
         .dropna(subset=["e1rm"])
         .sort_values("date")
     )
-    return session
+    return session, sbd[["date", "Exercise", "weight_kg", "Completed Reps"]].copy()
 
 
 @st.cache_data
@@ -141,8 +141,10 @@ def load_checkin(path: Path) -> pd.DataFrame:
 
 def trend_line(dates, values, window=4):
     """Rolling mean for trend overlay."""
-    s = pd.Series(values, index=dates).sort_index()
+    s = pd.Series(values.to_numpy(), index=dates.to_numpy()).sort_index()
     return s.rolling(window, min_periods=1).mean()
+
+
 
 
 # ── App shell ─────────────────────────────────────────────────────────────────
@@ -171,7 +173,7 @@ if not TRAINING_PATH.exists():
     st.error(f"Training log not found at `{TRAINING_PATH}`. Add it to the `data/` folder.")
     st.stop()
 
-session_df = load_training(TRAINING_PATH)
+session_df, sets_df = load_training(TRAINING_PATH)
 checkin_df = load_checkin(CHECKIN_PATH) if CHECKIN_PATH.exists() else None
 
 # ── Tab layout ────────────────────────────────────────────────────────────────
@@ -182,7 +184,9 @@ tab1, tab2, tab3 = st.tabs(["📈 SBD Progression", "🔗 Recovery Correlations"
 # ════════════════════════════════════════════════════════════════════════════
 with tab1:
     st.subheader("Estimated 1RM over time")
-    st.caption("Epley formula: weight × (1 + reps/30) · best working set per session")
+    st.caption("1 rep set -> infer e1RM from weight and RPE\n" + \
+               "\n2-5 reps set -> Epley formula: e1RM = weight × (1 + reps/30) · best working set per session\n" + \
+               "\n6+ reps sets -> ignore, not reliable for estimating 1RM")
 
     col_ctrl1, col_ctrl2 = st.columns([2, 1])
     with col_ctrl1:
@@ -217,7 +221,6 @@ with tab1:
         if sub.empty:
             continue
         color = EXERCISE_COLORS.get(ex, "#888")
-
         # Scatter points
         fig.add_trace(go.Scatter(
             x=sub["date"], y=sub["e1rm"].round(1),
@@ -249,21 +252,20 @@ with tab1:
     st.plotly_chart(fig, use_container_width=True)
 
     # ── PRs table ────────────────────────────────────────────────────────────
-    st.subheader("All-time PRs (estimated 1RM)")
+    st.subheader("All-time 1RM PRs")
     pr_rows = []
     for ex in SBD_EXERCISES:
-        sub = session_df[session_df["Exercise"] == ex]
+        sub = sets_df[sets_df["Exercise"] == ex]
         if sub.empty:
             continue
-        best = sub.loc[sub["e1rm"].idxmax()]
+        best = sub[sub["weight_kg"] == sub["weight_kg"].max()].sort_values("date").iloc[0]
         pr_rows.append({
             "Exercise": ex,
-            "e1RM (kg)": round(best["e1rm"], 1),
+            "Weight (kg)": round(best["weight_kg"], 1),
             "Date": best["date"].strftime("%d %b %Y"),
         })
     if pr_rows:
         st.dataframe(pd.DataFrame(pr_rows).set_index("Exercise"), use_container_width=True)
-
 # ════════════════════════════════════════════════════════════════════════════
 # TAB 2 — Recovery Correlations
 # ════════════════════════════════════════════════════════════════════════════
