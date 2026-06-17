@@ -4,6 +4,7 @@ Powerlifting Analytics Dashboard
 Data is loaded from the data/ folder next to this script:
   - data/liftosaur_training_log.csv
   - data/daily_checkin.csv
+  - data/weight_data.xlsx
 """
 
 import streamlit as st
@@ -17,6 +18,7 @@ from pathlib import Path
 DATA_DIR = Path(__file__).parent / "data"
 TRAINING_PATH = DATA_DIR / "liftosaur_training_log.csv"
 CHECKIN_PATH  = DATA_DIR / "daily_checkin.csv"
+WEIGHT_PATH   = DATA_DIR / "weight_data.xlsx"
 
 # ── Page config ──────────────────────────────────────────────────────────────
 st.set_page_config(
@@ -138,6 +140,79 @@ def load_checkin(path: Path) -> pd.DataFrame:
     checkin["date"] = checkin["date"].dt.normalize()
     return checkin
 
+@st.cache_data
+def load_weight(path: Path) -> pd.DataFrame:
+    weight = pd.read_excel(path, engine="openpyxl")
+    weight["date"] = pd.to_datetime(weight["Measure Time"], format="%d/%m/%Y %H:%M:%S").dt.normalize()
+    # First reading of each day (morning weigh-in)
+    weight = (weight.sort_values("Measure Time")
+                    .groupby("date", as_index=False)
+                    .first()[["date", "Weight(kg)"]]
+                    .rename(columns={"Weight(kg)": "bodyweight"}))
+    return weight
+
+
+# ── Competition score formulas (male) ─────────────────────────────────────────
+def wilks_score(total: float, bw: float) -> float:
+    a, b, c, d, e, f = -216.0475144, 16.2606339, -0.002388645, -0.00113732, 7.01863e-06, -1.291e-08
+    coeff = 500 / (a + b*bw + c*bw**2 + d*bw**3 + e*bw**4 + f*bw**5)
+    return round(total * coeff, 1)
+ 
+def dots_score(total: float, bw: float) -> float:
+    a, b, c, d, e = -0.000001093, 0.0007391293, -0.1918209091, 24.0900756, -307.75076
+    coeff = 500 / (a*bw**4 + b*bw**3 + c*bw**2 + d*bw + e)
+    return round(total * coeff, 1)
+ 
+ 
+@st.cache_data
+def build_totals_df(sets_df: pd.DataFrame, weight_df: pd.DataFrame) -> pd.DataFrame:
+    """
+    For each day a SBD lift was trained, look up:
+      - most recent squat session → heaviest set
+      - most recent bench session → heaviest set
+      - most recent deadlift session (conv or sumo, whichever heavier) → heaviest set
+    Sum to total, attach nearest bodyweight, compute Wilks + DOTS.
+    """
+    session_max = sets_df.groupby(["date", "Exercise"])["weight_kg"].max().reset_index()
+    training_days = sorted(session_max["date"].unique())
+ 
+    rows = []
+    for day in training_days:
+        def best_lift(exercise: str):
+            past = session_max[(session_max["Exercise"] == exercise) & (session_max["date"] <= day)]
+            if past.empty:
+                return None
+            return past[past["date"] == past["date"].max()]["weight_kg"].max()
+ 
+        squat = best_lift("Squat")
+        bench = best_lift("Bench Press")
+        conv  = best_lift("Deadlift")
+        sumo  = best_lift("Sumo Deadlift")
+        dl    = max(filter(None, [conv, sumo]), default=None)
+ 
+        if None in (squat, bench, dl):
+            continue  # haven't hit all 3 lifts yet
+ 
+        total = squat + bench + dl
+ 
+        bw_rows = weight_df[weight_df["date"] <= day]
+        if bw_rows.empty:
+            continue
+        bw = bw_rows.iloc[-1]["bodyweight"]
+ 
+        rows.append({
+            "date":       day,
+            "squat":      squat,
+            "bench":      bench,
+            "deadlift":   dl,
+            "total":      total,
+            "bodyweight": bw,
+            "wilks":      wilks_score(total, bw),
+            "dots":       dots_score(total, bw),
+        })
+ 
+    return pd.DataFrame(rows)
+
 
 def trend_line(dates, values, window=4):
     """Rolling mean for trend overlay."""
@@ -160,6 +235,7 @@ Drop your exports into the `data/` folder next to this script:
 
 - `liftosaur_training_log.csv`
 - `daily_checkin.csv`
+- `weight_data.xlsx`
 
 Then refresh the page.
         """
@@ -175,6 +251,8 @@ if not TRAINING_PATH.exists():
 
 session_df, sets_df = load_training(TRAINING_PATH)
 checkin_df = load_checkin(CHECKIN_PATH) if CHECKIN_PATH.exists() else None
+weight_df = load_weight(WEIGHT_PATH) if WEIGHT_PATH.exists() else None
+totals_df = build_totals_df(sets_df, weight_df) if weight_df is not None else None
 
 # ── Tab layout ────────────────────────────────────────────────────────────────
 tab1, tab2, tab3 = st.tabs(["📈 SBD Progression", "🔗 Recovery Correlations", "📋 Raw Data"])
@@ -266,6 +344,110 @@ with tab1:
         })
     if pr_rows:
         st.dataframe(pd.DataFrame(pr_rows).set_index("Exercise"), use_container_width=True)
+
+    # ── Wilks & DOTS over time ────────────────────────────────────────────────
+    st.divider()
+    st.subheader("Competition Scores: Wilks & DOTS over time")
+    
+    if totals_df is not None and len(totals_df) > 0:
+        st.caption("Wilks: Classic coefficient formula | DOTS: Dynamic one-time strength formula")
+        
+        col_score_ctrl1, col_score_ctrl2 = st.columns([2, 1])
+        with col_score_ctrl1:
+            scores_shown = st.multiselect(
+                "Scores to display",
+                options=["Wilks", "DOTS"],
+                default=["Wilks", "DOTS"],
+                key="scores_multiselect"
+            )
+        with col_score_ctrl2:
+            show_score_trend = st.toggle("Show trend line", value=True, key="score_trend_toggle")
+        
+        # Date filter for score plot
+        score_min_date = totals_df["date"].min().date()
+        score_max_date = totals_df["date"].max().date()
+        score_date_range = st.slider(
+            "Date range (scores)",
+            min_value=score_min_date,
+            max_value=score_max_date,
+            value=(score_min_date, score_max_date),
+            format="MMM YYYY",
+            key="score_date_slider"
+        )
+        
+        filtered_totals = totals_df[
+            (totals_df["date"].dt.date >= score_date_range[0])
+            & (totals_df["date"].dt.date <= score_date_range[1])
+        ].sort_values("date")
+        
+        fig_scores = go.Figure()
+        
+        if "Wilks" in scores_shown:
+            fig_scores.add_trace(go.Scatter(
+                x=filtered_totals["date"],
+                y=filtered_totals["wilks"],
+                mode="markers",
+                name="Wilks",
+                marker=dict(color="#E8844C", size=8, opacity=0.7),
+                hovertemplate="<b>Wilks</b><br>%{x|%d %b %Y}<br>Score: %{y:.1f}<extra></extra>",
+            ))
+            
+            if show_score_trend and len(filtered_totals) >= 2:
+                wilks_trend = trend_line(filtered_totals["date"], filtered_totals["wilks"])
+                fig_scores.add_trace(go.Scatter(
+                    x=wilks_trend.index,
+                    y=wilks_trend.values.round(1),
+                    mode="lines",
+                    name="Wilks trend",
+                    line=dict(color="#E8844C", width=2, dash="dot"),
+                    hoverinfo="skip",
+                ))
+        
+        if "DOTS" in scores_shown:
+            fig_scores.add_trace(go.Scatter(
+                x=filtered_totals["date"],
+                y=filtered_totals["dots"],
+                mode="markers",
+                name="DOTS",
+                marker=dict(color="#4CE87A", size=8, opacity=0.7),
+                hovertemplate="<b>DOTS</b><br>%{x|%d %b %Y}<br>Score: %{y:.1f}<extra></extra>",
+            ))
+            
+            if show_score_trend and len(filtered_totals) >= 2:
+                dots_trend = trend_line(filtered_totals["date"], filtered_totals["dots"])
+                fig_scores.add_trace(go.Scatter(
+                    x=dots_trend.index,
+                    y=dots_trend.values.round(1),
+                    mode="lines",
+                    name="DOTS trend",
+                    line=dict(color="#4CE87A", width=2, dash="dot"),
+                    hoverinfo="skip",
+                ))
+        
+        fig_scores.update_layout(
+            xaxis_title="Date",
+            yaxis_title="Competition Score",
+            hovermode="x unified",
+            legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1),
+            height=480,
+            margin=dict(l=40, r=20, t=10, b=40),
+        )
+        st.plotly_chart(fig_scores, use_container_width=True)
+        
+        # Display latest scores
+        if len(filtered_totals) > 0:
+            latest = filtered_totals.iloc[-1]
+            col1, col2, col3, col4 = st.columns(4)
+            with col1:
+                st.metric("Total", f"{latest['total']:.0f} kg")
+            with col2:
+                st.metric("Bodyweight", f"{latest['bodyweight']:.1f} kg")
+            with col3:
+                st.metric("Wilks", f"{latest['wilks']:.1f}")
+            with col4:
+                st.metric("DOTS", f"{latest['dots']:.1f}")
+    else:
+        st.info("📦 Upload `weight_data.xlsx` to see Wilks & DOTS scores over time.")
 # ════════════════════════════════════════════════════════════════════════════
 # TAB 2 — Recovery Correlations
 # ════════════════════════════════════════════════════════════════════════════
