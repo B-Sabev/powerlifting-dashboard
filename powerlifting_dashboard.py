@@ -323,22 +323,6 @@ with tab1:
     )
     st.plotly_chart(fig, width='stretch')
 
-    # ── PRs table ────────────────────────────────────────────────────────────
-    st.subheader("All-time 1RM PRs")
-    pr_rows = []
-    for ex in SBD_EXERCISES:
-        sub = sets_df[sets_df["Exercise"] == ex]
-        if sub.empty:
-            continue
-        best = sub[sub["weight_kg"] == sub["weight_kg"].max()].sort_values("date").iloc[0]
-        pr_rows.append({
-            "Exercise": ex,
-            "Weight (kg)": round(best["weight_kg"], 1),
-            "Date": best["date"].strftime("%d %b %Y"),
-        })
-    if pr_rows:
-        st.dataframe(pd.DataFrame(pr_rows).set_index("Exercise"), width='stretch')
-
     # ── DOTS over time ────────────────────────────────────────────────
     st.divider()
     st.subheader("Competition Scores: DOTS over time")
@@ -413,6 +397,24 @@ with tab1:
                 st.metric("DOTS", f"{latest['dots']:.1f}")
     else:
         st.info("📦 Upload `weight_data.xlsx` to see Wilks & DOTS scores over time.")
+
+    # ── PRs table ────────────────────────────────────────────────────────────
+    st.subheader("All-time 1RM PRs")
+    pr_rows = []
+    for ex in SBD_EXERCISES:
+        sub = sets_df[sets_df["Exercise"] == ex]
+        if sub.empty:
+            continue
+        best = sub[sub["weight_kg"] == sub["weight_kg"].max()].sort_values("date").iloc[0]
+        pr_rows.append({
+            "Exercise": ex,
+            "Weight (kg)": round(best["weight_kg"], 1),
+            "Date": best["date"].strftime("%d %b %Y"),
+        })
+    if pr_rows:
+        st.dataframe(pd.DataFrame(pr_rows).set_index("Exercise"), width='stretch')
+
+
 # ════════════════════════════════════════════════════════════════════════════
 # TAB 2 — Recovery Correlations
 # ════════════════════════════════════════════════════════════════════════════
@@ -511,21 +513,3 @@ with tab2:
     else:
         st.info("Need at least 5 training days with complete data for the heatmap.")
 
-# ════════════════════════════════════════════════════════════════════════════
-# TAB 3 — Raw Data
-# ════════════════════════════════════════════════════════════════════════════
-with tab3:
-    st.subheader("SBD session data")
-    st.dataframe(
-        session_df.rename(columns={"e1rm": "e1RM (kg)", "date": "Date", "Exercise": "Exercise"})
-        .assign(**{"e1RM (kg)": lambda d: d["e1RM (kg)"].round(1)})
-        .sort_values("Date", ascending=False),
-        width='stretch',
-    )
-
-    if checkin_df is not None:
-        st.subheader("Check-in data")
-        st.dataframe(
-            checkin_df.sort_values("date", ascending=False),
-            width='stretch',
-        )
