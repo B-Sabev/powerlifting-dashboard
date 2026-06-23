@@ -41,6 +41,14 @@ _Append-only. The "why" behind locked choices — don't re-litigate these._
   deliberately left as CSV/XLSX; no reason to migrate them until they're automated too.
   Long-term direction (not yet executed): one DB, one ETL layer, dashboard becomes a pure
   DB consumer — this is the first slice of that, not the whole migration.
+- **Daily check-in: link-based CSV export, no DB, no auth** — `scripts/sync_checkin.py`
+  downloads the check-in Google Sheet via its public CSV export URL (sheet shared as
+  "Anyone with the link"). Chosen over a service account because GCP now gates project
+  creation/API enablement behind attaching a billing account (payment method on file) even
+  for free-tier usage — not worth the friction for a personal sheet. No upsert logic
+  needed here unlike Cronometer: the sheet already holds full history, so every sync is a
+  full, idempotent overwrite of `daily_checkin.csv`. Trade-off accepted: the sheet (sleep,
+  mood, stress, notes) is reachable by anyone with the link, no login required.
 - **Nutrition DB disaster recovery: re-export + re-sync, not local backups** —
   `data/powerlifting.db` is a local cache of Cronometer's data, not the source of truth
   (Cronometer's servers are). If the `.db` file is lost: run a full-range
@@ -64,12 +72,7 @@ when shipped, then move the line to Changelog._
   single 7700 kcal/kg conversion both ways (bulk and cut), while the skill does a
   proper fat/lean dual-bound range. Worth deciding if Tab 3 should adopt the bound
   logic too, or if the simpler point-estimate is intentional.
-- [ ] Figure out ways to reduce manual exporting and uploading -> Liftosaur premium, sync FeelFit to Liftosaur through Health connect, add body measurements in Liftosaur instead of a google sheet file, setup a cron job for the daily check-in data
-- [ ] Cronometer anacron job only exports a 1-day window — widen to a rolling lookback
-  (e.g. 7 days) so late-logged entries, retroactive edits in Cronometer, or a missed
-  anacron run don't permanently fall through the cracks. `sync_cronometer.py`'s upsert is
-  already idempotent on overlapping dates, so this is free — just change the
-  `cronometer-export` start-date flag.
+- [ ] Figure out ways to reduce manual exporting and uploading -> Liftosaur premium, sync FeelFit to Liftosaur through Health connect, add body measurements in Liftosaur instead of a google sheet file
 - [ ] Verify `cronometer-export` can pull full history in one shot without silently
   truncating — it worked once for the original backfill, but it's an unofficial API.
   Worth a one-time check (full-range export, diff row count vs `.db`) before leaning on it
@@ -80,6 +83,14 @@ when shipped, then move the line to Changelog._
 ## Changelog
 _Append-only. One line per session, most recent on top._
 
+- 2026-06-23: Daily check-in sync automated — `scripts/sync_checkin.py` pulls the check-in
+  Google Sheet via its public CSV export link, added to the same cron job as the
+  Cronometer sync. Full overwrite each run, no upsert/DB needed (sheet is already full
+  history).
+
+- 2026-06-23: Widened Cronometer anacron job from a 1-day to a 7-day export window —
+  absorbs late-logged entries/retroactive edits/missed runs for free via the existing
+  idempotent upsert.
 - 2026-06-23: Documented nutrition DB disaster-recovery plan (full re-export +
   `sync_cronometer.py` re-sync) and flagged the unmitigated Cronometer-account-loss gap.
 
