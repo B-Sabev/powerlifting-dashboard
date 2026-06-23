@@ -22,7 +22,7 @@ from pathlib import Path
 import pandas as pd
 
 DATA_DIR = Path(__file__).parent.parent / "data"
-DEFAULT_CSV_PATH = DATA_DIR / "chronometer_daily_nutrition.csv"
+DEFAULT_CSV_PATH = DATA_DIR / "cronometer_daily_nutrition.csv"
 DB_PATH = DATA_DIR / "powerlifting.db"
 
 TABLE_NAME = "cronometer_daily_nutrition"
