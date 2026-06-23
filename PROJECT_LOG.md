@@ -33,6 +33,22 @@ _Append-only. The "why" behind locked choices — don't re-litigate these._
   See body-composition-analysis SKILL.md.
 - **Single-file app, no multi-file refactor** unless explicitly asked.
 - **Plotly only** — no matplotlib.
+- **Cronometer migrated to SQLite, other sources stay CSV/XLSX** — `data/powerlifting.db`
+  is now the source of truth for nutrition (`cronometer_daily_nutrition` table, keyed on
+  `date`, upserted by `scripts/sync_cronometer.py`). Chosen over CSV because this source
+  is now written by an unattended daily job, and CSV has no clean idempotent-upsert story
+  for incremental writes — a `UNIQUE(date)` constraint does. Liftosaur/FeelFit/check-in
+  deliberately left as CSV/XLSX; no reason to migrate them until they're automated too.
+  Long-term direction (not yet executed): one DB, one ETL layer, dashboard becomes a pure
+  DB consumer — this is the first slice of that, not the whole migration.
+- **Nutrition DB disaster recovery: re-export + re-sync, not local backups** —
+  `data/powerlifting.db` is a local cache of Cronometer's data, not the source of truth
+  (Cronometer's servers are). If the `.db` file is lost: run a full-range
+  `cronometer-export`, then `python scripts/sync_cronometer.py --csv <export>` —
+  `CREATE TABLE IF NOT EXISTS` + upsert handles rebuilding from empty, no special
+  recovery path needed. Accepted risk, not mitigated: if the Cronometer *account* itself
+  is ever lost, there's no local copy of full history to fall back on, since the daily
+  export only ever holds a rolling window.
 
 ## Backlog / Ideas
 _Unsorted brain dump. Either of us appends here; triage later. Check one off in place
@@ -48,10 +64,32 @@ when shipped, then move the line to Changelog._
   single 7700 kcal/kg conversion both ways (bulk and cut), while the skill does a
   proper fat/lean dual-bound range. Worth deciding if Tab 3 should adopt the bound
   logic too, or if the simpler point-estimate is intentional.
-- [ ] Figure out ways to reduce manual exporting and uploading -> Liftosaur premium, sync FeelFit to Liftosaur through Health connect, add body measurements in Liftosaur instead of a google sheet file, setup cron jobs to download the Cronometer and the daily check-in data
+- [ ] Figure out ways to reduce manual exporting and uploading -> Liftosaur premium, sync FeelFit to Liftosaur through Health connect, add body measurements in Liftosaur instead of a google sheet file, setup a cron job for the daily check-in data
+- [ ] Cronometer anacron job only exports a 1-day window — widen to a rolling lookback
+  (e.g. 7 days) so late-logged entries, retroactive edits in Cronometer, or a missed
+  anacron run don't permanently fall through the cracks. `sync_cronometer.py`'s upsert is
+  already idempotent on overlapping dates, so this is free — just change the
+  `cronometer-export` start-date flag.
+- [ ] Verify `cronometer-export` can pull full history in one shot without silently
+  truncating — it worked once for the original backfill, but it's an unofficial API.
+  Worth a one-time check (full-range export, diff row count vs `.db`) before leaning on it
+  as the disaster-recovery path. See Decisions.
+- [ ] Cronometer account loss (lockout, ban, etc.) has no mitigation — the daily export is
+  a rolling window, not a full backup. Low odds; accepted risk for now, not urgent.
 
 ## Changelog
 _Append-only. One line per session, most recent on top._
+
+- 2026-06-23: Documented nutrition DB disaster-recovery plan (full re-export +
+  `sync_cronometer.py` re-sync) and flagged the unmitigated Cronometer-account-loss gap.
+
+- 2026-06-23: Cronometer pipeline automated — anacron runs `cronometer-export` daily,
+  overwriting `chronometer_daily_nutrition.csv` with the latest day, then calls
+  `sync_cronometer.py` to upsert into `data/powerlifting.db`. Historical backfill done
+  once manually before automation started.
+- 2026-06-23: Added `scripts/sync_cronometer.py` (idempotent CSV → SQLite upsert keyed on
+  date) and repointed Tab 3's nutrition loader at `data/powerlifting.db` instead of the
+  raw CSV. Other tabs/sources untouched.
 
 - 2026-06-22: Created PROJECT_LOG.md, retired TODO.txt.
 - 2026-06-22: Fixed unsourced lean-mass bound (1000 → 5500 kcal/kg) in

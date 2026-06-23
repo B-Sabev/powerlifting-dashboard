@@ -1,8 +1,10 @@
+data/chronometer_daily_nutrition.csv
+
+
 # Byte-compiled / optimized / DLL files
 __pycache__/
 *.py[codz]
 *$py.class
-TODO.txt
 
 # C extensions
 *.so

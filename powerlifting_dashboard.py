@@ -7,6 +7,8 @@ Data is loaded from the data/ folder next to this script:
   - data/weight_data.xlsx
 """
 
+import sqlite3
+
 import streamlit as st
 import pandas as pd
 import numpy as np
@@ -19,7 +21,11 @@ DATA_DIR = Path(__file__).parent / "data"
 TRAINING_PATH = DATA_DIR / "liftosaur_training_log.csv"
 CHECKIN_PATH  = DATA_DIR / "daily_checkin.csv"
 WEIGHT_PATH   = DATA_DIR / "weight_data.xlsx"
-NUTRITION_PATH = DATA_DIR / "chronometer_daily_nutrition.csv"
+# Nutrition now lives in the SQLite warehouse, kept up to date by
+# scripts/sync_cronometer.py (manually for now, cron later). The raw CSV
+# export is the sync script's input, not something the dashboard reads directly.
+DB_PATH = DATA_DIR / "powerlifting.db"
+NUTRITION_TABLE = "cronometer_daily_nutrition"
 
 # ── Page config ──────────────────────────────────────────────────────────────
 st.set_page_config(
@@ -153,18 +159,26 @@ def load_weight(path: Path) -> pd.DataFrame:
     return weight
 
 @st.cache_data
-def load_nutrition(path: Path) -> pd.DataFrame:
-    df = pd.read_csv(path)
-    df["date"] = pd.to_datetime(df["Date"], errors="coerce").dt.normalize()
-    # Keep only relevant columns
-    keep_cols = ["date", "Energy (kcal)", "Protein (g)", "Carbs (g)", "Fat (g)"]
-    for c in keep_cols:
-        if c not in df.columns:
-            df[c] = np.nan
-    df = df[keep_cols].copy()
-    df = df.dropna(subset=["date"])
-    # Convert energy to numeric (strip commas if any)
-    df["Energy (kcal)"] = pd.to_numeric(df["Energy (kcal)"], errors="coerce")
+def load_nutrition(db_path: Path) -> pd.DataFrame:
+    """Load daily energy/macro totals from the SQLite warehouse (synced via scripts/sync_cronometer.py)."""
+    conn = sqlite3.connect(db_path)
+    try:
+        df = pd.read_sql_query(
+            f"SELECT date, energy_kcal, protein_g, carbs_g, fat_g FROM {NUTRITION_TABLE}",
+            conn,
+        )
+    finally:
+        conn.close()
+
+    df["date"] = pd.to_datetime(df["date"]).dt.normalize()
+    # Renamed back to the dashboard's existing display-column convention so
+    # everything downstream (Tab 3) is untouched by the storage swap.
+    df = df.rename(columns={
+        "energy_kcal": "Energy (kcal)",
+        "protein_g": "Protein (g)",
+        "carbs_g": "Carbs (g)",
+        "fat_g": "Fat (g)",
+    })
     return df
 
 
@@ -246,7 +260,9 @@ Drop your exports into the `data/` folder next to this script:
 - `liftosaur_training_log.csv`
 - `daily_checkin.csv`
 - `weight_data.xlsx`
-- `chronometer_daily_nutrition.csv`
+
+Nutrition comes from `powerlifting.db` (SQLite), kept current by running:
+`python scripts/sync_cronometer.py` after a fresh Cronometer export.
 
 Then refresh the page.
         """
@@ -263,7 +279,7 @@ if not TRAINING_PATH.exists():
 session_df, sets_df = load_training(TRAINING_PATH)
 checkin_df = load_checkin(CHECKIN_PATH) if CHECKIN_PATH.exists() else None
 weight_df = load_weight(WEIGHT_PATH) if WEIGHT_PATH.exists() else None
-nutrition_df = load_nutrition(NUTRITION_PATH) if NUTRITION_PATH.exists() else None
+nutrition_df = load_nutrition(DB_PATH) if DB_PATH.exists() else None
 totals_df = build_totals_df(sets_df, weight_df) if weight_df is not None and sets_df is not None else None
 
 # ── Tab layout ────────────────────────────────────────────────────────────────
@@ -539,7 +555,7 @@ with tab3:
         st.stop()
 
     if nutrition_df is None:
-        st.info("👈 Upload `chronometer_daily_nutrition.csv` to unlock nutrition calculations.")
+        st.info("👈 Run `python scripts/sync_cronometer.py` to populate the nutrition database and unlock this tab.")
         st.stop()
 
     st.subheader("⚖️ Weight & Nutrition Tracking")
