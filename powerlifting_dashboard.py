@@ -2,7 +2,6 @@
 Powerlifting Analytics Dashboard
 ---------------------------------
 Data is loaded from the data/ folder next to this script:
-  - data/liftosaur_training_log.csv
   - data/daily_checkin.csv
   - data/powerlifting.db
 """
@@ -18,13 +17,13 @@ from plotly.subplots import make_subplots
 from pathlib import Path
 
 DATA_DIR = Path(__file__).parent / "data"
-TRAINING_PATH = DATA_DIR / "liftosaur_training_log.csv"
 CHECKIN_PATH  = DATA_DIR / "daily_checkin.csv"
-# Nutrition and bodyweight both live in the SQLite warehouse, kept up to date
-# by scripts/sync_cronometer.py and scripts/sync_liftosaur_body_measurements.py
-# respectively (daily cron). Their raw exports are those scripts' inputs, not
-# something the dashboard reads directly.
+# Training log, bodyweight, and nutrition all live in the SQLite warehouse, kept
+# up to date by scripts/sync_liftosaur_training_log.py, scripts/sync_liftosaur_body_measurements.py,
+# and scripts/sync_cronometer.py respectively (daily cron). Their raw exports
+# are those scripts' inputs, not something the dashboard reads directly.
 DB_PATH = DATA_DIR / "powerlifting.db"
+TRAINING_TABLE = "training_log"
 NUTRITION_TABLE = "cronometer_daily_nutrition"
 MEASUREMENTS_TABLE = "daily_measurements"
 
@@ -100,37 +99,32 @@ def estimate_e1rm(row) -> float | None:
 
 # ── Data loading helpers ──────────────────────────────────────────────────────
 @st.cache_data
-def load_training(path: Path) -> pd.DataFrame:
-    df = pd.read_csv(path)
-    sbd = df[
-        df["Exercise"].isin(SBD_EXERCISES)
-        & (df["Is Warmup Set?"] == 0)
-        & (df["Completed Reps"].notna())
-        & (df["Completed Weight Value"].notna())
-        & (df["Completed Weight Value"] > 0)
-        & (df["Completed Reps"] > 0)
-    ].copy()
+def load_training(db_path: Path) -> pd.DataFrame:
+    """Load SBD working sets from the SQLite warehouse (synced via scripts/sync_liftosaur_training_log.py)."""
+    conn = sqlite3.connect(db_path)
+    try:
+        df = pd.read_sql_query(
+            f"SELECT date, exercise, reps, weight_kg, rpe FROM {TRAINING_TABLE}",
+            conn,
+        )
+    finally:
+        conn.close()
 
-    # Normalise to kg
-    sbd["weight_kg"] = np.where(
-        sbd["Completed Weight Unit"] == "lb",
-        sbd["Completed Weight Value"] * 0.453592,
-        sbd["Completed Weight Value"],
-    )
-    sbd["date"] = pd.to_datetime(sbd["Workout DateTime"], utc=True).dt.normalize().dt.tz_localize(None)
+    df = df.rename(columns={"exercise": "Exercise", "reps": "Completed Reps", "rpe": "Completed RPE"})
+    df["date"] = pd.to_datetime(df["date"]).dt.normalize()
 
     # e1RM: RTS for singles, Epley for 2–4 reps, None for 5+
-    sbd["e1rm"] = sbd.apply(estimate_e1rm, axis=1)
+    df["e1rm"] = df.apply(estimate_e1rm, axis=1)
 
     # Best set per session (max ignores None/NaN automatically)
     session = (
-        sbd.groupby(["date", "Exercise"])["e1rm"]
+        df.groupby(["date", "Exercise"])["e1rm"]
         .max()
         .reset_index()
         .dropna(subset=["e1rm"])
         .sort_values("date")
     )
-    return session, sbd[["date", "Exercise", "weight_kg", "Completed Reps"]].copy()
+    return session, df[["date", "Exercise", "weight_kg", "Completed Reps"]].copy()
 
 
 @st.cache_data
@@ -263,11 +257,11 @@ with st.sidebar:
         f"""
 Drop your exports into the `data/` folder next to this script:
 
-- `liftosaur_training_log.csv`
 - `daily_checkin.csv`
 
-Bodyweight and nutrition come from `powerlifting.db` (SQLite), kept current by running:
-`python scripts/sync_liftosaur_body_measurements.py` and `python scripts/sync_cronometer.py`
+Training log, bodyweight, and nutrition come from `powerlifting.db` (SQLite), kept current
+by running: `python scripts/sync_liftosaur_training_log.py`,
+`python scripts/sync_liftosaur_body_measurements.py`, and `python scripts/sync_cronometer.py`
 after a fresh export.
 
 Then refresh the page.
@@ -278,11 +272,14 @@ Then refresh the page.
         st.rerun()
 
 # ── Load data ─────────────────────────────────────────────────────────────────
-if not TRAINING_PATH.exists():
-    st.error(f"Training log not found at `{TRAINING_PATH}`. Add it to the `data/` folder.")
+if not DB_PATH.exists():
+    st.error(f"Database not found at `{DB_PATH}`. Run `python scripts/sync_liftosaur_training_log.py` to sync from Liftosaur.")
     st.stop()
 
-session_df, sets_df = load_training(TRAINING_PATH)
+session_df, sets_df = load_training(DB_PATH)
+if session_df.empty:
+    st.error("No training data found in the database. Run `python scripts/sync_liftosaur_training_log.py` to sync from Liftosaur.")
+    st.stop()
 checkin_df = load_checkin(CHECKIN_PATH) if CHECKIN_PATH.exists() else None
 weight_df = load_weight(DB_PATH) if DB_PATH.exists() else None
 if weight_df is not None and weight_df.empty:

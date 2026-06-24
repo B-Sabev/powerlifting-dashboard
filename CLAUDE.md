@@ -27,13 +27,14 @@ history; add an entry there after non-trivial work, most recent on top.
 .venv/bin/python3 scripts/sync_cronometer.py [--csv path] [--db path]
 .venv/bin/python3 scripts/sync_checkin.py [--sheet-id ID] [--gid GID]
 .venv/bin/python3 scripts/sync_liftosaur_body_measurements.py [--dry-run] [--full] [--db path]
+.venv/bin/python3 scripts/sync_liftosaur_training_log.py [--dry-run] [--full] [--db path]
 ```
 
 There is no test suite, linter, or CI config in this repo.
 
 ## Data flow architecture
 
-Three independent ingestion paths feed `data/powerlifting.db`, each with its own sync
+Four independent ingestion paths feed `data/powerlifting.db`, each with its own sync
 script under `scripts/`. The dashboard itself never writes to the DB — it only reads.
 
 1. **Nutrition** — `cronometer-export` binary (in `scripts/`, pulls from Cronometer's
@@ -52,17 +53,28 @@ script under `scripts/`. The dashboard itself never writes to the DB — it only
    Sheet shared as "Anyone with the link" → `scripts/sync_checkin.py` downloads it via the
    public CSV export URL and **fully overwrites** `data/daily_checkin.csv` (no DB, no
    upsert — the sheet already holds full history, append-only, in Google Sheets).
-4. **Training log** — `data/liftosaur_training_log.csv` (Liftosaur training export) is read
-   directly by the dashboard, not synced through a script.
+4. **Training log** (SBD working sets — squat/bench/deadlift, for now) — Liftosaur API →
+   `scripts/sync_liftosaur_training_log.py` → `training_log` table. Liftosaur's API has no
+   structured per-set endpoint; the only training-data endpoint (`GET /history`) returns
+   each workout as a compact text summary that the script regex-parses (see its module
+   docstring for the exact format). No natural per-set unique key exists, so re-syncs are
+   idempotent via delete-then-reinsert keyed on `workout_id`, not a column-level upsert.
+   Incremental by default via the same `sync_state` table as body measurements
+   (`key='training_log'`); `--full` re-pulls everything (also doubles as the historical
+   backfill — the API holds full history, no separate backfill script needed). Warmup sets
+   and failed/0-rep attempts are dropped during parsing, matching what the dashboard already
+   filtered out of the old CSV export.
 
-All three sync scripts are idempotent (safe to re-run / re-import overlapping data) and are
+All sync scripts are idempotent (safe to re-run / re-import overlapping data) and are
 chained together in a single daily run by `/etc/cron.daily/powerlifting-dashboard-sync`
 (outside this repo) — logs go to `logs/powerlifting_cron_job_exports.log`.
 
-**Upsert pattern**: every script that writes to SQLite uses `INSERT ... ON CONFLICT(date) DO
-UPDATE SET col=excluded.col` for only the columns it has data for in that run — never
-`INSERT OR REPLACE`, which would null out unrelated columns for a date if a single fetch
-fails or you re-sync just one source/key.
+**Upsert pattern**: scripts writing single-row-per-date tables use `INSERT ... ON
+CONFLICT(date) DO UPDATE SET col=excluded.col` for only the columns they have data for in
+that run — never `INSERT OR REPLACE`, which would null out unrelated columns for a date if
+a single fetch fails or you re-sync just one source/key. `training_log` is multi-row-per-date
+(autoincrement `id` PK) so it instead deletes and reinserts all rows for a given
+`workout_id` on each sync.
 
 ## Dashboard structure (`powerlifting_dashboard.py`)
 
@@ -83,11 +95,9 @@ Single-file Streamlit app, three tabs, each independently gated on its data bein
   representative).
 
 Data loaders (`load_training`, `load_checkin`, `load_weight`, `load_nutrition`) are all
-`@st.cache_data`-decorated; use the sidebar "Reload data" button (clears the cache) after
-re-syncing data rather than restarting the app.
-
-Note: `load_weight()` currently reads from a `weight_data.xlsx` path that no longer exists
-in `data/` (weight/body-fat history has since migrated into the `daily_measurements` SQLite
-table via the Liftosaur sync) — Tabs 1's DOTS section and Tab 3 are effectively disabled
-until the dashboard is repointed at `daily_measurements` (tracked in `PROJECT_LOG.md`
-backlog).
+`@st.cache_data`-decorated and read from `data/powerlifting.db` except `load_checkin`
+(reads `data/daily_checkin.csv` directly); use the sidebar "Reload data" button (clears the
+cache) after re-syncing data rather than restarting the app. All three DB-backed loaders
+rename SQL columns back to the dashboard's original display-column names at load time
+(e.g. `exercise` → `"Exercise"`, `reps` → `"Completed Reps"`) so downstream Tab 1/2 code is
+unaffected by the underlying storage.
