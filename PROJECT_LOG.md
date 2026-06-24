@@ -30,6 +30,8 @@ _Append-only. The "why" behind locked choices — don't re-litigate these._
   full, idempotent overwrite of `daily_checkin.csv`. Trade-off accepted: the sheet (sleep,
   mood, stress, notes) is reachable by anyone with the link, no login required.
 
+- **Liftosaur body measurements sync (`sync_liftosaur_body_measurements.py`)** — fetches all measurement keys from the Liftosaur API into `daily_measurements` (dynamic columns, `ALTER TABLE` for new keys). Uses `ON CONFLICT(date) DO UPDATE` touching only the columns present in that run, not `INSERT OR REPLACE` -- replace would null out other columns on a date if a single key's fetch fails or you re-sync just one key. Two earlier draft versions of this script existed (`sync_l.py`, and a buggy first pass of this file using the wrong API response key and un-truncated ISO timestamps); the stale one was moved to `sync_l.py.deleteme` since there's no delete tool available here -- git rm it when you get a chance.
+
 ## Backlog / Ideas
 _Unsorted brain dump. Triage later. Check one off in place
 when shipped, then move the line to Changelog.

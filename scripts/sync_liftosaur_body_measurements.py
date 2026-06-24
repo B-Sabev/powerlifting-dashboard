@@ -1,256 +1,211 @@
-#!/usr/bin/env python3
 """
-Fetch all Liftosaur body measurements (weight, bodyfat, and lengths) and
-store them in 'daily_measurements' table. New columns are added automatically.
+Liftosaur body measurements -> SQLite sync
+-------------------------------------------
+Fetches every body-measurement series from the Liftosaur API (weight,
+bodyfat, and all custom length measurements) and upserts them into the
+`daily_measurements` table in data/powerlifting.db, one row per calendar
+date. New measurement keys logged in the Liftosaur app show up as new
+columns automatically (ALTER TABLE) -- no code change needed here.
 
-Table schema (updated dynamically):
-    date          TEXT PRIMARY KEY,
-    weight_kg     REAL,
-    body_fat_percent REAL,
-    neck_cm       REAL,           -- added if present
-    chest_cm      REAL,
-    biceps_left_cm REAL,
-    ... etc.
+Usage:
+    python scripts/sync_liftosaur_body_measurements.py
+    python scripts/sync_liftosaur_body_measurements.py --db /path/to/other.db
+
+Safe to re-run: existing dates are updated column-by-column
+(ON CONFLICT DO UPDATE), not wholesale-replaced. A naive INSERT OR REPLACE
+would null out every column not included in *this* run's data for that
+date -- e.g. if a key's request fails, or you only re-sync one key --
+silently destroying previously-synced measurements for that day.
 """
 
-import sys
-import sqlite3
-import re
-import requests
-from datetime import datetime
+import argparse
 import os
+import re
+import sqlite3
+from pathlib import Path
+
+import requests
 from dotenv import load_dotenv
 
+load_dotenv(Path(__file__).parent.parent / ".env")
 
-# ============ CONFIGURATION ============
-load_dotenv(os.Path(__file__).parent.parent / ".env")
-print(os.environ.get("LIFTOSAUR_API_KEY"))
 API_KEY = os.environ.get("LIFTOSAUR_API_KEY")
-if not API_KEY:
-    raise SystemExit("LIFTOSAUR_API_KEY not set. Copy .env.example to .env and fill it in.")
-
 BASE_URL = "https://www.liftosaur.com/api/v1"
-DB_PATH = "data/powerlifting.db"
-# =======================================
+DATA_DIR = Path(__file__).parent.parent / "data"
+DEFAULT_DB_PATH = DATA_DIR / "powerlifting.db"
+TABLE_NAME = "daily_measurements"
+
+LB_TO_KG = 0.453592
+IN_TO_CM = 2.54
+
+VALUE_RE = re.compile(r"^\s*([\d.]+)\s*([a-zA-Z%]+)\s*$")
 
 
-def snake_case(name):
-    """Convert camelCase to snake_case and lower-case."""
-    # Insert underscore before capital letters
-    s = re.sub(r'(?<=[a-z])(?=[A-Z])', '_', name)
-    s = re.sub(r'(?<=[A-Z])(?=[A-Z][a-z])', '_', s)  # handle acronyms
-    return s.lower().replace('-', '_').replace(' ', '_')
+def camel_to_snake(name: str) -> str:
+    """Convert a camelCase (or acronym-bearing) API key to snake_case."""
+    s = re.sub(r"(?<=[a-z0-9])(?=[A-Z])", "_", name)
+    s = re.sub(r"(?<=[A-Z])(?=[A-Z][a-z])", "_", s)
+    return s.lower().replace("-", "_").replace(" ", "_")
 
-def get_column_name(key):
-    """Return the column name for a measurement key, without suffix."""
-    return snake_case(key)
 
-def get_suffix(key):
-    """Return the suffix and column type for the measurement."""
+def column_for_key(key: str) -> tuple[str, str]:
+    """Return (column_name, target_unit) for a Liftosaur measurement key."""
+    base = camel_to_snake(key)
     if key == "weight":
-        return "_kg", "REAL"
-    elif key == "bodyfat":
-        return "_percent", "REAL"
-    else:
-        return "_cm", "REAL"
+        return f"{base}_kg", "kg"
+    if key == "bodyfat":
+        return "body_fat_percent", "percent"
+    return f"{base}_cm", "cm"
 
-def parse_value(value_str):
-    """Parse numeric value and unit from string like '180lb' or '37cm'."""
-    match = re.match(r"([\d.]+)\s*([a-zA-Z%]+)", value_str.strip())
+
+def parse_and_convert(raw_value: str, target_unit: str, key: str) -> float | None:
+    """Parse a 'NUMBER+UNIT' string and convert to target_unit; None (with a warning) if unparseable/unsupported."""
+    match = VALUE_RE.match(raw_value or "")
     if not match:
-        return None, None
-    return float(match.group(1)), match.group(1).lower()
-
-def convert_to_target(value_str, target_unit):
-    """
-    Parse value_str and convert to target_unit (kg, percent, or cm).
-    Returns float or None.
-    """
-    num, unit = parse_value(value_str)
-    if num is None:
+        print(f"  [WARN] Could not parse value '{raw_value}' for key '{key}' -- skipping.")
         return None
+
+    num = float(match.group(1))
+    unit = match.group(2).lower()
+
     if target_unit == "kg":
-        if unit in ("lb", "lbs"):
-            return num * 0.453592
-        elif unit == "kg":
+        if unit == "kg":
             return num
-        else:
-            return None
+        if unit in ("lb", "lbs"):
+            return num * LB_TO_KG
     elif target_unit == "percent":
         if unit == "%":
             return num
-        else:
-            return None
     elif target_unit == "cm":
-        if unit in ("cm", "centimeter", "centimeters"):
+        if unit == "cm":
             return num
-        elif unit in ("in", "inch", "inches"):
-            return num * 2.54
-        else:
-            return None
+        if unit in ("in", "inch", "inches"):
+            return num * IN_TO_CM
+
+    print(f"  [WARN] Unsupported unit '{unit}' for key '{key}' (value '{raw_value}') -- skipping.")
     return None
 
-def ensure_columns(conn, columns):
-    """Add missing columns to the daily_measurements table."""
-    cursor = conn.cursor()
-    # Get existing columns
-    cursor.execute("PRAGMA table_info(daily_measurements)")
-    existing = {row[1] for row in cursor.fetchall()}
-    for col_name, col_type in columns.items():
-        if col_name not in existing:
-            cursor.execute(f"ALTER TABLE daily_measurements ADD COLUMN {col_name} {col_type}")
-            print(f"  → Added column: {col_name} {col_type}")
-    conn.commit()
 
-def get_all_measurement_keys():
-    """Fetch all measurement keys from API."""
-    url = f"{BASE_URL}/measurements"
-    headers = {"Authorization": f"Bearer {API_KEY}"}
-    resp = requests.get(url, headers=headers)
-    if resp.status_code != 200:
-        print(f"✗ Failed to get measurement list: {resp.status_code}")
-        return []
-    data = resp.json()
-    keys = [m["key"] for m in data.get("data", {}).get("measurements", [])]
-    print(f"✓ Found keys: {', '.join(keys)}")
-    return keys
+def iso_to_date(iso_str: str) -> str:
+    """Extract the YYYY-MM-DD date part from a Liftosaur ISO-8601 timestamp."""
+    return iso_str.split("T")[0]
 
-def fetch_history(key, limit=200):
-    """Fetch all records for a measurement key (handles pagination)."""
-    url = f"{BASE_URL}/measurements/{key}"
-    headers = {"Authorization": f"Bearer {API_KEY}"}
-    all_records = []
+
+def _auth_headers() -> dict:
+    """Build the Bearer-auth header Liftosaur expects."""
+    return {"Authorization": f"Bearer {API_KEY}"}
+
+
+def fetch_measurement_keys() -> list[str]:
+    """Fetch the list of all measurement keys the user has logged in Liftosaur."""
+    resp = requests.get(f"{BASE_URL}/measurements", headers=_auth_headers(), timeout=10)
+    resp.raise_for_status()
+    raw = resp.json().get("data", {}).get("measurements", [])
+    return [m["key"] if isinstance(m, dict) else m for m in raw]
+
+
+def fetch_key_history(key: str) -> list[dict]:
+    """Fetch the full paginated time series for one measurement key."""
+    values = []
     cursor = None
     while True:
-        params = {"limit": limit}
-        if cursor:
-            params["cursor"] = cursor
-        resp = requests.get(url, headers=headers, params=params)
-        if resp.status_code != 200:
+        params = {"cursor": cursor} if cursor else {}
+        resp = requests.get(f"{BASE_URL}/measurements/{key}", headers=_auth_headers(), params=params, timeout=10)
+        resp.raise_for_status()
+        payload = resp.json().get("data", {})
+        values.extend(payload.get("values", []))
+        if not payload.get("hasMore"):
             break
-        data = resp.json()
-        records = data.get("data", {}).get("records", [])
-        if not records:
-            break
-        all_records.extend(records)
-        cursor = data.get("data", {}).get("cursor")
+        cursor = payload.get("cursor")
         if not cursor:
             break
-    return all_records
+    return values
+
+
+def ensure_columns(conn: sqlite3.Connection, columns: set) -> None:
+    """Add any measurement columns that don't exist yet on daily_measurements (all REAL)."""
+    existing = {row[1] for row in conn.execute(f"PRAGMA table_info({TABLE_NAME})")}
+    for col in columns - existing:
+        conn.execute(f"ALTER TABLE {TABLE_NAME} ADD COLUMN {col} REAL")
+        print(f"  [INFO] Added column: {col}")
+
+
+def upsert_day(conn: sqlite3.Connection, date: str, values: dict) -> None:
+    """Insert or update one date's row, touching only the columns provided (others left untouched)."""
+    cols = ["date"] + list(values.keys())
+    placeholders = ", ".join("?" for _ in cols)
+    update_clause = ", ".join(f"{c}=excluded.{c}" for c in values)
+    sql = (
+        f"INSERT INTO {TABLE_NAME} ({', '.join(cols)}) VALUES ({placeholders}) "
+        f"ON CONFLICT(date) DO UPDATE SET {update_clause}"
+    )
+    conn.execute(sql, [date] + list(values.values()))
+
 
 def main():
-    if API_KEY == "lftsk_your_key_here":
-        print("✗ Please set your API_KEY in the script.")
-        sys.exit(1)
+    parser = argparse.ArgumentParser(description="Sync Liftosaur body measurements into the SQLite warehouse.")
+    parser.add_argument("--db", type=Path, default=DEFAULT_DB_PATH, help="Path to the SQLite database file.")
+    parser.add_argument("--dry-run", action="store_true", help="Fetch and print what would be written, but don't touch the DB.")
+    args = parser.parse_args()
 
-    print("=" * 50)
-    print("Liftosaur All Measurements → SQLite")
-    print("=" * 50)
+    if not API_KEY:
+        raise SystemExit("LIFTOSAUR_API_KEY not set. Copy .env.example to .env and fill it in.")
 
-    # 1. Get all measurement keys
-    keys = get_all_measurement_keys()
+    keys = fetch_measurement_keys()
     if not keys:
-        print("✗ No keys retrieved.")
-        sys.exit(1)
+        raise SystemExit("No measurement keys returned by the API.")
+    print(f"Found {len(keys)} measurement key(s): {', '.join(keys)}")
 
-    # 2. Fetch records for each key and build a dictionary: date -> {column: value}
-    all_data = {}  # date -> dict of column:value
+    by_date: dict = {}
     for key in keys:
-        print(f"\n→ Fetching '{key}'...")
-        records = fetch_history(key)
-        if not records:
-            print("  ⚠ No records.")
+        column, target_unit = column_for_key(key)
+        print(f"-> Fetching '{key}' -> column '{column}'")
+        try:
+            records = fetch_key_history(key)
+        except requests.RequestException as e:
+            print(f"  [WARN] Request failed for key '{key}': {e} -- skipping this key.")
             continue
 
-        col_base = get_column_name(key)
-        suffix, col_type = get_suffix(key)
-        col_name = col_base + suffix
-
-        # Determine target unit
-        if key == "weight":
-            target_unit = "kg"
-        elif key == "bodyfat":
-            target_unit = "percent"
-        else:
-            target_unit = "cm"
-
-        # Process each record
         for rec in records:
-            date = rec.get("date")
-            if not date:
+            raw_date = rec.get("date")
+            if not raw_date:
                 continue
-            val_str = rec.get("value", "")
-            num = convert_to_target(val_str, target_unit)
-            if num is None:
+            date = iso_to_date(raw_date)
+            value = parse_and_convert(rec.get("value", ""), target_unit, key)
+            if value is None:
                 continue
-            if date not in all_data:
-                all_data[date] = {}
-            all_data[date][col_name] = num
+            by_date.setdefault(date, {})[column] = value
+        print(f"  {len(records)} record(s) processed.")
 
-        print(f"  ✓ {len(records)} records processed → {len(all_data)} dates so far")
-
-    if not all_data:
-        print("\n⚠ No usable data.")
+    if not by_date:
+        print("No usable data fetched -- nothing to write.")
         return
 
-    # 3. Determine all columns that will be stored
-    all_columns = set()
-    for row in all_data.values():
-        all_columns.update(row.keys())
+    if args.dry_run:
+        all_columns = sorted({col for row in by_date.values() for col in row})
+        print(f"\n[DRY RUN] Would upsert {len(by_date)} date(s) across {len(all_columns)} column(s): {', '.join(all_columns)}")
+        for date in sorted(by_date)[:5]:
+            print(f"  {date}: {by_date[date]}")
+        if len(by_date) > 5:
+            print(f"  ... and {len(by_date) - 5} more date(s)")
+        print("[DRY RUN] No changes written to the database.")
+        return
 
-    # Ensure base columns date is primary key, and we have at least weight_kg, body_fat_percent?
-    # But if they don't exist, they might not be in all_columns, we still add them if present.
-    # We'll add all columns from all_data.
+    args.db.parent.mkdir(parents=True, exist_ok=True)
+    conn = sqlite3.connect(args.db)
+    try:
+        conn.execute(f"CREATE TABLE IF NOT EXISTS {TABLE_NAME} (date TEXT PRIMARY KEY)")
+        all_columns = {col for row in by_date.values() for col in row}
+        ensure_columns(conn, all_columns)
+        for date, values in by_date.items():
+            upsert_day(conn, date, values)
+        conn.commit()
+        total_rows = conn.execute(f"SELECT COUNT(*) FROM {TABLE_NAME}").fetchone()[0]
+    finally:
+        conn.close()
 
-    # 4. Connect to DB and add missing columns
-    conn = sqlite3.connect(DB_PATH)
-    # Ensure table exists with at least date primary key
-    conn.execute("""
-        CREATE TABLE IF NOT EXISTS daily_measurements (
-            date TEXT PRIMARY KEY
-        )
-    """)
-    conn.commit()
+    print(f"Synced {len(by_date)} date(s) -> {args.db.name} ({total_rows} total rows in {TABLE_NAME}).")
 
-    # Build column definitions for ensure_columns
-    col_defs = {}
-    for col in all_columns:
-        # Determine type: if ends with _cm or _kg or _percent, use REAL, else TEXT? But we only have numeric.
-        if col.endswith(("_cm", "_kg", "_percent")):
-            col_defs[col] = "REAL"
-        else:
-            col_defs[col] = "TEXT"   # fallback (shouldn't happen)
-    ensure_columns(conn, col_defs)
-
-    # 5. Insert or replace data
-    cursor = conn.cursor()
-    inserted = 0
-    updated = 0
-    for date, row_data in all_data.items():
-        # Build column list and placeholders
-        cols = list(row_data.keys())
-        vals = [row_data[col] for col in cols]
-        # Ensure date is included as first column for primary key
-        cols_with_date = ["date"] + cols
-        vals_with_date = [date] + vals
-        placeholders = ", ".join(["?"] * len(cols_with_date))
-        col_names = ", ".join(cols_with_date)
-        sql = f"INSERT OR REPLACE INTO daily_measurements ({col_names}) VALUES ({placeholders})"
-        cursor.execute(sql, vals_with_date)
-        if cursor.rowcount == 1:
-            # Check if it was an update (row already existed)
-            # We can't easily tell, but we'll count as inserted for simplicity
-            inserted += 1
-        else:
-            updated += 1  # not exactly, but okay
-
-    conn.commit()
-    conn.close()
-
-    print("\n" + "=" * 50)
-    print(f"✓ Done. Stored/updated {inserted + updated} rows.")
-    print(f"  Columns added: {len(all_columns)} measurement columns.")
-    print("=" * 50)
 
 if __name__ == "__main__":
     main()
