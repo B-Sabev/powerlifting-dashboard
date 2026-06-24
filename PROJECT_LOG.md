@@ -20,7 +20,7 @@ _Append-only. The "why" behind locked choices — don't re-litigate these._
 - **e1RM: RTS table for singles, Epley for 2–5 reps, ignore 6+** — locked, don't suggest alternatives without strong reason.
 - **Unlogged nutrition days skipped, not interpolated** — vacation/irregular days aren't representative of normal eating/expenditure patterns.
 - **TDEE estimation** — fat-mass bound 7700 kcal/kg, lean-mass bound 5500 kcal/kg (~2,500 kcal/lb to build muscle incl. synthesis inefficiency) Rolling average pre-seeded from full history. See body-composition-analysis SKILL.md.
-- **Cronometer migrated to SQLite, other sources stay CSV/XLSX** — `data/powerlifting.db` is now the source of truth for nutrition (`cronometer_daily_nutrition` table, keyed on `date`, upserted by `scripts/sync_cronometer.py`). Chosen over CSV because this source is now written by an unattended daily job, and CSV has no clean idempotent-upsert story for incremental writes — a `UNIQUE(date)` constraint does. Liftosaur/FeelFit/check-in deliberately left as CSV/XLSX; no reason to migrate them until they're automated too. Long-term direction (not yet executed): one DB, one ETL layer, dashboard becomes a pure DB consumer — this is the first slice of that, not the whole migration.
+- **Cronometer migrated to SQLite** — `data/powerlifting.db` is now the source of truth for nutrition (`cronometer_daily_nutrition` table, keyed on `date`, upserted by `scripts/sync_cronometer.py`). Chosen over CSV because this source is now written by an unattended daily job, and CSV has no clean idempotent-upsert story for incremental writes — a `UNIQUE(date)` constraint does.
 - **Daily check-in: link-based CSV export, no DB, no auth** — `scripts/sync_checkin.py`
   downloads the check-in Google Sheet via its public CSV export URL (sheet shared as
   "Anyone with the link"). Chosen over a service account because GCP now gates project
@@ -30,7 +30,7 @@ _Append-only. The "why" behind locked choices — don't re-litigate these._
   full, idempotent overwrite of `daily_checkin.csv`. Trade-off accepted: the sheet (sleep,
   mood, stress, notes) is reachable by anyone with the link, no login required.
 
-- **Liftosaur body measurements sync (`sync_liftosaur_body_measurements.py`)** — fetches all measurement keys from the Liftosaur API into `daily_measurements` (dynamic columns, `ALTER TABLE` for new keys). Uses `ON CONFLICT(date) DO UPDATE` touching only the columns present in that run, not `INSERT OR REPLACE` -- replace would null out other columns on a date if a single key's fetch fails or you re-sync just one key. Two earlier draft versions of this script existed (`sync_l.py`, and a buggy first pass of this file using the wrong API response key and un-truncated ISO timestamps); the stale one was moved to `sync_l.py.deleteme` since there's no delete tool available here -- git rm it when you get a chance.
+- **Liftosaur body measurements sync (`sync_liftosaur_body_measurements.py`)** — fetches all measurement keys from the Liftosaur API into `daily_measurements` (dynamic columns, `ALTER TABLE` for new keys). Uses `ON CONFLICT(date) DO UPDATE` touching only the columns present in that run, not `INSERT OR REPLACE` -- replace would null out other columns on a date if a single key's fetch fails or you re-sync just one key.
 
 ## Backlog / Ideas
 _Unsorted brain dump. Triage later. Check one off in place
@@ -42,11 +42,10 @@ when shipped, then move the line to Changelog.
 - [ ] Go/no-go session predictor — logistic regression on morning check-in features
 - [ ] Combine body measurements data and Feelfit data to try to estimate how much lean mass am I gaining, add to Nutrition and Weight tab
 - [ ] Add a README.md (currently missing — matters for hiring-manager portfolio review)
-- [ ] Reconcile Tab 3's TDEE calc with the skill's logic — dashboard currently uses a single 7700 kcal/kg conversion both ways (bulk and cut), while the skill does a
-  proper fat/lean dual-bound range. Worth deciding if Tab 3 should adopt the bound
-  logic too, or if the simpler point-estimate is intentional.
-- [ ] Figure out ways to reduce manual exporting and uploading -> Liftosaur premium, sync FeelFit to Liftosaur through Health connect, add body measurements in Liftosaur instead of a google sheet file
+- [ ] Reconcile Tab 3's TDEE calc with the skill's logic — dashboard currently uses a single 7700 kcal/kg conversion both ways (bulk and cut), while the skill does a proper fat/lean dual-bound range. Worth deciding if Tab 3 should adopt the bound logic too, or if the simpler point-estimate is intentional.
+- [ ] Use Liftosaur API to get workouts
 - [ ] implement the body measurements google sheet into the powerlifting dashboard
+- [ ] find a good way to back-up the database 
 
 
 

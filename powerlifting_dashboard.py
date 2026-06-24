@@ -4,7 +4,7 @@ Powerlifting Analytics Dashboard
 Data is loaded from the data/ folder next to this script:
   - data/liftosaur_training_log.csv
   - data/daily_checkin.csv
-  - data/weight_data.xlsx
+  - data/powerlifting.db
 """
 
 import sqlite3
@@ -20,12 +20,13 @@ from pathlib import Path
 DATA_DIR = Path(__file__).parent / "data"
 TRAINING_PATH = DATA_DIR / "liftosaur_training_log.csv"
 CHECKIN_PATH  = DATA_DIR / "daily_checkin.csv"
-WEIGHT_PATH   = DATA_DIR / "weight_data.xlsx"
-# Nutrition now lives in the SQLite warehouse, kept up to date by
-# scripts/sync_cronometer.py (manually for now, cron later). The raw CSV
-# export is the sync script's input, not something the dashboard reads directly.
+# Nutrition and bodyweight both live in the SQLite warehouse, kept up to date
+# by scripts/sync_cronometer.py and scripts/sync_liftosaur_body_measurements.py
+# respectively (daily cron). Their raw exports are those scripts' inputs, not
+# something the dashboard reads directly.
 DB_PATH = DATA_DIR / "powerlifting.db"
 NUTRITION_TABLE = "cronometer_daily_nutrition"
+MEASUREMENTS_TABLE = "daily_measurements"
 
 # ── Page config ──────────────────────────────────────────────────────────────
 st.set_page_config(
@@ -148,14 +149,19 @@ def load_checkin(path: Path) -> pd.DataFrame:
     return checkin
 
 @st.cache_data
-def load_weight(path: Path) -> pd.DataFrame:
-    weight = pd.read_excel(path, engine="openpyxl")
-    weight["date"] = pd.to_datetime(weight["Measure Time"], format="%d/%m/%Y %H:%M:%S").dt.normalize()
-    # First reading of each day (morning weigh-in)
-    weight = (weight.sort_values("Measure Time")
-                    .groupby("date", as_index=False)
-                    .first()[["date", "Weight(kg)"]]
-                    .rename(columns={"Weight(kg)": "bodyweight"}))
+def load_weight(db_path: Path) -> pd.DataFrame:
+    """Load daily bodyweight from the SQLite warehouse (synced via scripts/sync_liftosaur_body_measurements.py)."""
+    conn = sqlite3.connect(db_path)
+    try:
+        weight = pd.read_sql_query(
+            f"SELECT date, weight_kg FROM {MEASUREMENTS_TABLE} WHERE weight_kg IS NOT NULL",
+            conn,
+        )
+    finally:
+        conn.close()
+
+    weight["date"] = pd.to_datetime(weight["date"]).dt.normalize()
+    weight = weight.rename(columns={"weight_kg": "bodyweight"}).sort_values("date")
     return weight
 
 @st.cache_data
@@ -259,10 +265,10 @@ Drop your exports into the `data/` folder next to this script:
 
 - `liftosaur_training_log.csv`
 - `daily_checkin.csv`
-- `weight_data.xlsx`
 
-Nutrition comes from `powerlifting.db` (SQLite), kept current by running:
-`python scripts/sync_cronometer.py` after a fresh Cronometer export.
+Bodyweight and nutrition come from `powerlifting.db` (SQLite), kept current by running:
+`python scripts/sync_liftosaur_body_measurements.py` and `python scripts/sync_cronometer.py`
+after a fresh export.
 
 Then refresh the page.
         """
@@ -278,7 +284,9 @@ if not TRAINING_PATH.exists():
 
 session_df, sets_df = load_training(TRAINING_PATH)
 checkin_df = load_checkin(CHECKIN_PATH) if CHECKIN_PATH.exists() else None
-weight_df = load_weight(WEIGHT_PATH) if WEIGHT_PATH.exists() else None
+weight_df = load_weight(DB_PATH) if DB_PATH.exists() else None
+if weight_df is not None and weight_df.empty:
+    weight_df = None
 nutrition_df = load_nutrition(DB_PATH) if DB_PATH.exists() else None
 totals_df = build_totals_df(sets_df, weight_df) if weight_df is not None and sets_df is not None else None
 
@@ -429,7 +437,7 @@ with tab1:
             with col3:
                 st.metric("DOTS", f"{latest['dots']:.1f}")
     else:
-        st.info("📦 Upload `weight_data.xlsx` to see Wilks & DOTS scores over time.")
+        st.info("📦 Sync bodyweight via `scripts/sync_liftosaur_body_measurements.py` to see Wilks & DOTS scores over time.")
 
     # ── PRs table ────────────────────────────────────────────────────────────
     st.subheader("All-time 1RM PRs")
@@ -551,7 +559,7 @@ with tab2:
 # ════════════════════════════════════════════════════════════════════════════
 with tab3:
     if weight_df is None:
-        st.info("👈 Upload `weight_data.xlsx` to see weight tracking.")
+        st.info("👈 Sync bodyweight via `scripts/sync_liftosaur_body_measurements.py` to see weight tracking.")
         st.stop()
 
     if nutrition_df is None:
