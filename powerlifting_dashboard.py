@@ -247,29 +247,8 @@ def trend_line(dates, values, window=4):
 
 
 # ── App shell ─────────────────────────────────────────────────────────────────
-st.title("🏋️ Powerlifting Analytics")
+st.title("Powerlifting Analytics")
 st.caption("SBD progression · Recovery correlations · Session quality")
-
-# ── Sidebar ───────────────────────────────────────────────────────────────────
-with st.sidebar:
-    st.header("📂 Data")
-    st.markdown(
-        f"""
-Drop your exports into the `data/` folder next to this script:
-
-- `daily_checkin.csv`
-
-Training log, bodyweight, and nutrition come from `powerlifting.db` (SQLite), kept current
-by running: `python scripts/sync_liftosaur_training_log.py`,
-`python scripts/sync_liftosaur_body_measurements.py`, and `python scripts/sync_cronometer.py`
-after a fresh export.
-
-Then refresh the page.
-        """
-    )
-    if st.button("🔄 Reload data"):
-        st.cache_data.clear()
-        st.rerun()
 
 # ── Load data ─────────────────────────────────────────────────────────────────
 if not DB_PATH.exists():
@@ -288,7 +267,7 @@ nutrition_df = load_nutrition(DB_PATH) if DB_PATH.exists() else None
 totals_df = build_totals_df(sets_df, weight_df) if weight_df is not None and sets_df is not None else None
 
 # ── Tab layout ────────────────────────────────────────────────────────────────
-tab1, tab2, tab3 = st.tabs(["📈 SBD Progression", "🔗 Recovery Correlations", "⚖️ Weight & Nutrition"])
+tab1, tab2, tab3 = st.tabs(["SBD Progression", "Recovery Correlations", "Weight & Nutrition"])
 # ════════════════════════════════════════════════════════════════════════════
 # TAB 1 — SBD Progression
 # ════════════════════════════════════════════════════════════════════════════
@@ -363,10 +342,13 @@ with tab1:
 
     # ── DOTS over time ────────────────────────────────────────────────
     st.divider()
-    st.subheader("Competition Scores: DOTS over time")
+    st.subheader("DOTS over time")
     
     if totals_df is not None and len(totals_df) > 0:
-        st.caption("DOTS: Dynamic one-time strength formula")
+        st.caption("DOTS (Dynamic Objective Team Scoring) is a " + 
+                   "body weight adjusted scoring system for powerlifting. "
+                   "It uses the highest lifted squat, bench press, deadlift at a given weight, " + ""
+                   "plugged into a biological sex (male/female) specific formula, allowing for comparison of lifters of different body weights.")
         
     
         with st.columns([2, 1])[0]:
@@ -563,7 +545,7 @@ with tab3:
         st.info("👈 Run `python scripts/sync_cronometer.py` to populate the nutrition database and unlock this tab.")
         st.stop()
 
-    st.subheader("⚖️ Weight & Nutrition Tracking")
+    st.subheader("Weight & Nutrition Tracking")
     st.caption("Track your bulk/cut progress by combining daily weight and calorie intake.")
 
     # Merge weight and nutrition on date (inner join keeps only days with both)
@@ -710,7 +692,7 @@ with tab3:
 
     # ---- Progress Summary (Metrics) ----
     st.divider()
-    st.subheader("📊 Progress Summary")
+    st.subheader("Progress Summary")
     colA, colB, colC, colD = st.columns(4)
     with colA:
         st.metric("Actual rate", f"{rate_actual:+.2f} kg/week", delta=f"{rate_actual - target_rate:+.2f} vs target")
@@ -750,7 +732,7 @@ with tab3:
         st.plotly_chart(fig_cal, use_container_width=True)
 
     # ---- Show raw data table optionally ----
-    with st.expander("📋 View merged data"):
+    with st.expander("View merged data"):
         st.dataframe(
             plot_data[["date", "bodyweight", "rolling", "Energy (kcal)"]].round(2),
             use_container_width=True
