@@ -61,7 +61,7 @@ with tab1:
     progression.render(session_df, sets_df, totals_df)
 
 with tab2:
-    recovery.render(session_df, checkin_df)
+    recovery.render(session_df, sets_df, checkin_df)
 
 with tab3:
     weight_nutrition.render(weight_df, nutrition_df)

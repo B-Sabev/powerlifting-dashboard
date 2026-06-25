@@ -52,7 +52,23 @@ CORR_PREDICTORS = {
     "Mood":                "mood",
     "Life Stress":         "life_stress",
     "Training Motivation": "training_motivation",
+    "Rolling Sleep (3d)":  "rolling_sleep_3",
+    "Rolling Sleep (7d)":  "rolling_sleep_7",
+    "ACWR":                "acwr",
 }
+
+# ── Tab 2 (Recovery) feature-engineering windows ─────────────────────────────
+# Per-lift relative e1RM: each session's e1RM vs. the trailing mean of its
+# previous N sessions for that same lift (see lib.calculations.relative_e1rm).
+RELATIVE_E1RM_WINDOW = 7
+RELATIVE_E1RM_MIN_PERIODS = 3
+# Rolling sleep windows fed into lib.calculations.trend_line.
+ROLLING_SLEEP_WINDOWS = {"rolling_sleep_3": 3, "rolling_sleep_7": 7}
+# Acute:chronic workload ratio windows (days) — see lib.calculations.acwr.
+ACWR_ACUTE_WINDOW = 7
+ACWR_CHRONIC_WINDOW = 28
+# L2 penalty for the standardized ridge regression in the recovery tab.
+RIDGE_ALPHA = 1.0
 
 # ── Physique calculator constants (Tab 4) ────────────────────────────────────
 # Hardcoded per data/body_measurement_calculators.xlsx — not logged regularly.

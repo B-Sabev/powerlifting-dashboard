@@ -7,6 +7,7 @@ presentation lives in the tabs/ package; the cached DB loaders live in lib/data.
 
 import numpy as np
 import pandas as pd
+import statsmodels.api as sm
 
 from lib.constants import RTS_TABLE, NUCKOLS_COEF
 
@@ -47,6 +48,82 @@ def trend_line(dates, values, window=4):
     """Rolling mean for trend overlay."""
     s = pd.Series(values.to_numpy(), index=dates.to_numpy()).sort_index()
     return s.rolling(window, min_periods=1).mean()
+
+
+# ── Recovery-tab performance/predictor features ──────────────────────────────
+def relative_e1rm(session_df: pd.DataFrame, window: int = 7, min_periods: int = 3) -> pd.Series:
+    """Per-lift performance relative to that lift's own recent baseline: each
+    session's e1RM divided by the trailing mean of its *previous* `window`
+    sessions for the same exercise (NaN until `min_periods` prior sessions
+    exist). This makes performance comparable across lifts (a deadlift e1RM
+    isn't on the same scale as a bench e1RM) and detrends the slow upward
+    e1RM trend over a training cycle. >1 = above recent baseline, <1 = below.
+
+    `session_df` must have one row per (date, Exercise) session with columns
+    "date", "Exercise", "e1rm" — e.g. the `session` frame from
+    lib.data.load_training. Returned Series is aligned to session_df's index.
+    """
+    df = session_df.sort_values("date")
+    baseline = (
+        df.groupby("Exercise", group_keys=False)["e1rm"]
+        .apply(lambda s: s.shift(1).rolling(window, min_periods=min_periods).mean())
+    )
+    return (df["e1rm"] / baseline).reindex(session_df.index)
+
+
+def acwr(dates, loads, acute_window: int = 7, chronic_window: int = 28, method: str = "ra") -> pd.Series:
+    """Acute:chronic workload ratio — a sports-science readiness/fatigue proxy.
+    Acute = recent training load (last `acute_window` days), chronic = the
+    longer-run baseline (last `chronic_window` days, expressed as the same
+    daily-equivalent scale). ~0.8-1.3 = load matches recent fitness; >1.5 =
+    load spike (elevated fatigue/injury risk); <0.8 = undertrained relative to
+    recent baseline.
+
+    `loads` (e.g. daily Σ weight_kg * reps) is reindexed to one row per
+    calendar day between min/max date with 0 on untrained days, since rest
+    days are part of both the acute and chronic window, not gaps to skip.
+    `method`: "ra" for rolling average (default) or "ewm" for exponentially
+    weighted (more sensitive to recent days). Returns a daily-indexed Series.
+    """
+    s = pd.Series(np.asarray(loads, dtype=float), index=pd.to_datetime(dates)).sort_index()
+    full_idx = pd.date_range(s.index.min(), s.index.max(), freq="D")
+    s = s.reindex(full_idx, fill_value=0.0)
+
+    if method == "ewm":
+        acute = s.ewm(span=acute_window, adjust=False).mean()
+        chronic = s.ewm(span=chronic_window, adjust=False).mean()
+    else:
+        acute = s.rolling(acute_window, min_periods=1).mean()
+        chronic = s.rolling(chronic_window, min_periods=1).mean()
+
+    return acute / chronic.replace(0, np.nan)
+
+
+def ridge_standardized_coefs(X: pd.DataFrame, y: pd.Series, alpha: float = 1.0) -> pd.Series:
+    """Each predictor's *unique* contribution to y, holding the others
+    constant: a ridge (L2-penalized) regression fit on z-scored X and y, so
+    coefficients are directly comparable across predictors with different
+    units/scales. Unlike univariate correlation, this controls for
+    inter-predictor correlation (e.g. sleep and fatigue moving together).
+
+    Rows with any NaN in X or y are dropped first — listwise deletion is
+    correct here (a joint model needs every predictor for every row), unlike
+    the pairwise-complete correlations used elsewhere in the recovery tab.
+    Returns one coefficient per column of X (intercept dropped).
+    """
+    data = X.copy()
+    data["__y__"] = y
+    data = data.dropna()
+
+    y_std = (data["__y__"] - data["__y__"].mean()) / data["__y__"].std(ddof=0)
+    X_std = (data[X.columns] - data[X.columns].mean()) / data[X.columns].std(ddof=0)
+
+    design = sm.add_constant(X_std)
+    model = sm.OLS(y_std, design).fit_regularized(alpha=alpha, L1_wt=0.0)
+    # fit_regularized doesn't always preserve the pandas index on .params, so
+    # rebuild it explicitly from the design matrix's columns.
+    params = pd.Series(model.params, index=design.columns)
+    return params.drop("const")
 
 
 # ── Physique calculator formulas ─────────────────────────────────────────────
