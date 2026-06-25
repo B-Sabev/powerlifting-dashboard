@@ -55,3 +55,4 @@ _Unsorted. Check off in place when shipped, then move the line to CHANGE_LOG._
 - [ ] Widen training-log sync beyond SBD (table/parser already handle arbitrary names — just
   relax the `SBD_EXERCISES` filter)
 - [ ] README.md (missing — matters for portfolio review)
+- [ ] Publish the app online
