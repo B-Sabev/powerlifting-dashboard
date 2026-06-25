@@ -6,11 +6,15 @@ Read this first in any new chat instead of re-deriving context.
 ## Status
 _Current state, kept short, overwritten not appended._
 
-3 tabs implemented:
+4 tabs implemented:
 1. SBD progression - e1RM, DOTS, table with AT1RM PR - looks great for now
 2. Recovery correlations - try to relate the daily check in with e1rm performance - currently it doesn't look useful, need to rethink the whole approach
 3. Weight and Nutrition Tracking — bulk/cut tracking, dual-panel Plotly (weight+rolling avg+target
    projection / calories+avg+TDEE), unlogged days skipped not interpolated -> looks great for now
+4. Physique Calculators — FFMI, target body-composition planner, Casey Butt max muscular
+   potential, gains-to-ceiling, Nuckols efficiency, and projected lifts at target/max FFM.
+   Ported from `data/body_measurement_calculators.xlsx`; cross-checked against the sheet's
+   own formulas recalculated in LibreOffice headless — exact match.
 
 ## Decisions
 _Append-only. The "why" behind locked choices — don't re-litigate these._
@@ -33,6 +37,7 @@ _Append-only. The "why" behind locked choices — don't re-litigate these._
 - **Liftosaur body measurements sync (`sync_liftosaur_body_measurements.py`)** — fetches all measurement keys from the Liftosaur API into `daily_measurements` (dynamic columns, `ALTER TABLE` for new keys). Uses `ON CONFLICT(date) DO UPDATE` touching only the columns present in that run, not `INSERT OR REPLACE` -- replace would null out other columns on a date if a single key's fetch fails or you re-sync just one key.
 - **Tab 1/Tab 3 bodyweight repointed at `daily_measurements`** — `load_weight()` now reads `weight_kg` from the SQLite `daily_measurements` table instead of the no-longer-present `weight_data.xlsx`. That file was the original FeelFit export; once weight/body-fat history moved into the DB (via the Liftosaur measurements sync), the dashboard had been left still pointing at the stale, missing file, silently disabling Tab 1's DOTS section and all of Tab 3.
 - **Liftosaur training log sync (`sync_liftosaur_training_log.py`)** — the only training-data endpoint Liftosaur's API exposes is `GET /history`, which returns each workout as a compact text summary (not structured per-set JSON) — see module docstring for the exact format and the regex parsing approach. Stores only completed SBD (squat/bench/deadlift) working sets in a new `training_log` table (`id` autoincrement PK, `workout_id`, `date`, `exercise`, `reps`, `weight_kg`, `rpe`); warmup sets are excluded entirely (matches what the dashboard already filtered out, and recoverable later via `--full` since the API, not this DB, is the source of truth). No natural per-set unique key exists (identical sets within one `"3x3 100kg"` token are indistinguishable), so re-syncs are idempotent via delete-then-reinsert keyed on `workout_id`, not a column-level upsert. Sets with `0` completed reps (failed attempts, e.g. `"1x0 110kg @10"`) are dropped during parsing, matching the dashboard's pre-existing `Completed Reps > 0` filter — verified against the full historical CSV export that, once that filter is applied, the API parse matches the CSV exactly for every date the CSV covers. `sync_state` (already used by the measurements sync) is reused as-is with `key='training_log'`. Exercise names are stored verbatim as Liftosaur reports them (`"Deadlift"`, not "Conventional Deadlift") to match existing `SBD_EXERCISES`/`EXERCISE_COLORS` without other code changes. `liftosaur_training_log.csv` is no longer read by the dashboard.
+- **Physique calculators: height/wrist/ankle hardcoded, weight/BF/S-B-D pre-filled-but-editable** — height (175cm), wrist (17.5cm), and ankle (24.5cm) circumference aren't logged regularly, so they're module constants (`HEIGHT_CM`/`WRIST_CM`/`ANKLE_CM`) rather than DB-sourced. Current weight, body fat %, and S/B/D 1RM (all-time best e1RM per lift, higher of conv/sumo deadlift) are pre-filled from `daily_measurements`/training data but left as editable `st.number_input`s for what-if scenarios. Target FFMI and target body fat % are pure user inputs (Calculator 2); Calculator 3's own target-BF% input in the original spreadsheet was collapsed into the same Calculator 2 input — one number drives both, since duplicating it added a field without a real use case.
 
 ## Backlog / Ideas
 _Unsorted brain dump. Triage later. Check one off in place
@@ -45,7 +50,6 @@ when shipped, then move the line to Changelog.
 - [ ] Combine body measurements data and Feelfit data to try to estimate how much lean mass am I gaining, add to Nutrition and Weight tab
 - [ ] Add a README.md (currently missing — matters for hiring-manager portfolio review)
 - [ ] Reconcile Tab 3's TDEE calc with the skill's logic — dashboard currently uses a single 7700 kcal/kg conversion both ways (bulk and cut), while the skill does a proper fat/lean dual-bound range. Worth deciding if Tab 3 should adopt the bound logic too, or if the simpler point-estimate is intentional.
-- [ ] implement the body measurements google sheet into the powerlifting dashboard
 - [ ] find a good way to back-up the database
 - [ ] Widen `sync_liftosaur_training_log.py` beyond SBD lifts if/when other lifts need tracking (table and parser already handle arbitrary exercise names — just relax the `SBD_EXERCISES` filter)
 

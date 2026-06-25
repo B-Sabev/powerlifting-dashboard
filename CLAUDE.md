@@ -78,7 +78,7 @@ a single fetch fails or you re-sync just one source/key. `training_log` is multi
 
 ## Dashboard structure (`powerlifting_dashboard.py`)
 
-Single-file Streamlit app, three tabs, each independently gated on its data being available
+Single-file Streamlit app, four tabs, each independently gated on its data being available
 (falls back to an `st.info`/`st.stop()` placeholder rather than crashing):
 
 - **Tab 1 — SBD Progression**: e1RM over time per lift (RTS RPE table for 1-rep sets,
@@ -93,11 +93,21 @@ Single-file Streamlit app, three tabs, each independently gated on its data bein
   merged on `date` (inner join, so only days with both weight and nutrition logged appear).
   Unlogged nutrition days are skipped, not interpolated, by design (irregular days aren't
   representative).
+- **Tab 4 — Physique Calculators**: FFMI, target body-composition planner, Casey Butt max
+  muscular potential, gains-to-ceiling, Nuckols powerlifting efficiency, and projected lifts
+  at target/max FFM — ported from `data/body_measurement_calculators.xlsx` (formulas in
+  `ffm`/`ffmi_raw`/`ffmi_normalized`/`casey_butt_max_ffm`/`nuckols_predicted` etc., near
+  `dots_score`). Height/wrist/ankle are hardcoded module constants (`HEIGHT_CM`/`WRIST_CM`/
+  `ANKLE_CM`, not logged regularly); current weight, body fat %, and S/B/D 1RM (all-time
+  best e1RM per lift) are pre-filled from the DB via `load_latest_measurements()` and
+  `session_df` but left editable for what-if scenarios; target FFMI and target body fat %
+  are plain user inputs (the latter also drives Calculator 3, collapsing the spreadsheet's
+  duplicate input).
 
-Data loaders (`load_training`, `load_checkin`, `load_weight`, `load_nutrition`) are all
-`@st.cache_data`-decorated and read from `data/powerlifting.db` except `load_checkin`
-(reads `data/daily_checkin.csv` directly); use the sidebar "Reload data" button (clears the
-cache) after re-syncing data rather than restarting the app. All three DB-backed loaders
-rename SQL columns back to the dashboard's original display-column names at load time
-(e.g. `exercise` → `"Exercise"`, `reps` → `"Completed Reps"`) so downstream Tab 1/2 code is
-unaffected by the underlying storage.
+Data loaders (`load_training`, `load_checkin`, `load_weight`, `load_nutrition`,
+`load_latest_measurements`) are all `@st.cache_data`-decorated and read from
+`data/powerlifting.db` except `load_checkin` (reads `data/daily_checkin.csv` directly); use
+the sidebar "Reload data" button (clears the cache) after re-syncing data rather than
+restarting the app. The DB-backed loaders rename SQL columns back to the dashboard's
+original display-column names at load time (e.g. `exercise` → `"Exercise"`, `reps` →
+`"Completed Reps"`) so downstream Tab 1/2 code is unaffected by the underlying storage.

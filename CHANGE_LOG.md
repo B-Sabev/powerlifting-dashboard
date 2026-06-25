@@ -1,6 +1,12 @@
 ## Changelog
 _Append-only. One line per session, most recent on top._
 
+- 2026-06-25: Added a 4th tab, "Physique Calculators" — FFMI, target body-composition
+  planner, Casey Butt max muscular potential, gains-to-ceiling, Nuckols efficiency, and
+  projected lifts at target/max FFM, ported from `data/body_measurement_calculators.xlsx`
+  and cross-checked against the sheet recalculated in LibreOffice headless. Height/wrist/
+  ankle hardcoded; weight/BF%/S-B-D 1RM pre-filled from the DB but editable; target FFMI
+  and target body fat % are user inputs.
 - 2026-06-24: Added `scripts/sync_liftosaur_training_log.py` — pulls SBD training sets from
   Liftosaur's `/history` API (parsing its text-blob workout summaries) into a new
   `training_log` table, idempotent via delete-then-reinsert per `workout_id`. Repointed
