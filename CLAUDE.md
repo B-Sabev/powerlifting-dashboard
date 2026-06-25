@@ -7,12 +7,15 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 A personal Streamlit dashboard (`powerlifting_dashboard.py`) for tracking powerlifting
 progress, recovery, and nutrition/weight, fed by a set of standalone sync scripts that pull
 from various sources (Cronometer, Liftosaur API, a Google Sheet) into a local SQLite
-warehouse (`data/powerlifting.db`).
+warehouse (`data/powerlifting.db`). This project also serves as a porfolio project in applying for jobs related to AI, Data Science, LLM-assisted development, when appropriate suggest how to make the project better for discussing during interviews and demonstrate skills in the aforementioned areas.
 
-**Read `PROJECT_LOG.md` first in any new session** — it's the single source of truth for
-current status, locked design decisions ("Decisions" section — don't re-litigate these
-without a strong reason), and the backlog. `CHANGE_LOG.md` is the append-only one-line-per-session
-history; add an entry there after non-trivial work, most recent on top.
+Three docs, no overlap by design — keep it that way when editing them:
+- **This file (`CLAUDE.md`)** = *how it works* — the architecture/mechanism reference.
+- **`PROJECT_LOG.md`** = *why it's locked + what's next* — compressed locked-decision rationale
+  (don't re-litigate without a strong reason) and the backlog. Read it first in any new session.
+  Keep it rationale-and-backlog only; don't re-describe mechanisms that live here.
+- **`CHANGE_LOG.md`** = append-only one-line-per-session history; add an entry after non-trivial
+  work, most recent on top.
 
 ## Commands
 
@@ -84,7 +87,7 @@ a single fetch fails or you re-sync just one source/key. `training_log` is multi
 
 ## Dashboard structure
 
-`powerlifting_dashboard.py` is now a thin entrypoint (page config, data loading, `st.tabs`
+`powerlifting_dashboard.py` is a thin entrypoint (page config, data loading, `st.tabs`
 wiring) — it used to be a ~1,000-line monolith; the actual logic was split out by altitude:
 
 - **`lib/constants.py`** — data paths, table names, exercise/check-in column lists, and the
@@ -100,8 +103,9 @@ wiring) — it used to be a ~1,000-line monolith; the actual logic was split out
   from `data/powerlifting.db` except `load_checkin` (reads `data/daily_checkin.csv` directly).
   The DB-backed loaders rename SQL columns back to the dashboard's original display-column
   names at load time (e.g. `exercise` → `"Exercise"`, `reps` → `"Completed Reps"`) so the
-  `tabs/` modules are unaffected by the underlying storage. Use the sidebar "Reload data"
-  button (clears the cache) after re-syncing data rather than restarting the app.
+  `tabs/` modules are unaffected by the underlying storage. Because these are
+  `@st.cache_data`-cached, after re-syncing the DB you must clear Streamlit's cache (rerun
+  from the app menu, or restart) to see new data.
 - **`tabs/`** — one module per tab, each exposing a single `render(...)` function called from
   `powerlifting_dashboard.py` inside its `with tabN:` block. Each independently gated on its
   data being available (falls back to an `st.info`/`st.stop()` placeholder rather than

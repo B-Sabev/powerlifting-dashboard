@@ -1,58 +1,57 @@
 # Project Log
 
-Single source of truth for project state.
-Read this first in any new chat instead of re-deriving context.
-
-## Status
-_Current state, kept short, overwritten not appended._
-
-4 tabs implemented:
-1. SBD progression - e1RM, DOTS, table with AT1RM PR - looks great for now
-2. Recovery correlations - try to relate the daily check in with e1rm performance - currently it doesn't look useful, need to rethink the whole approach
-3. Weight and Nutrition Tracking — bulk/cut tracking, dual-panel Plotly (weight+rolling avg+target
-   projection / calories+avg+TDEE), unlogged days skipped not interpolated -> looks great for now
-4. Physique Calculators — FFMI, target body-composition planner, Casey Butt max muscular
-   potential, gains-to-ceiling, Nuckols efficiency, and projected lifts at target/max FFM.
-   Ported from `data/body_measurement_calculators.xlsx`; cross-checked against the sheet's
-   own formulas recalculated in LibreOffice headless — exact match.
+Project *state* — locked decisions and what's next. Read first in any new session.
+For **how the code/architecture works**, see `CLAUDE.md`; for chronological history,
+`CHANGE_LOG.md`. Keep this file rationale-and-backlog only — don't re-describe mechanisms
+that CLAUDE.md or a module docstring already cover.
 
 ## Decisions
-_Append-only. The "why" behind locked choices — don't re-litigate these._
+_Locked choices, compressed to the "why." Don't re-litigate without a strong reason._
 
-
-- **Current-snapshot totals, not rolling peak** — for each day with ≥1 SBD lift trained, look backward to most recent session per lift, heaviest set, sum to total, attach nearest bodyweight. Higher of conv/sumo deadlift used. Chosen because it reflects genuine current strength. 
-- **e1RM: RTS table for singles, Epley for 2–5 reps, ignore 6+** — locked, don't suggest alternatives without strong reason.
-- **Unlogged nutrition days skipped, not interpolated** — vacation/irregular days aren't representative of normal eating/expenditure patterns.
-- **TDEE estimation** — fat-mass bound 7700 kcal/kg, lean-mass bound 5500 kcal/kg (~2,500 kcal/lb to build muscle incl. synthesis inefficiency) Rolling average pre-seeded from full history. See body-composition-analysis SKILL.md.
-- **Cronometer migrated to SQLite** — `data/powerlifting.db` is now the source of truth for nutrition (`cronometer_daily_nutrition` table, keyed on `date`, upserted by `scripts/sync_cronometer.py`). Chosen over CSV because this source is now written by an unattended daily job, and CSV has no clean idempotent-upsert story for incremental writes — a `UNIQUE(date)` constraint does.
-- **Daily check-in: link-based CSV export, no DB, no auth** — `scripts/sync_checkin.py`
-  downloads the check-in Google Sheet via its public CSV export URL (sheet shared as
-  "Anyone with the link"). Chosen over a service account because GCP now gates project
-  creation/API enablement behind attaching a billing account (payment method on file) even
-  for free-tier usage — not worth the friction for a personal sheet. No upsert logic
-  needed here unlike Cronometer: the sheet already holds full history, so every sync is a
-  full, idempotent overwrite of `daily_checkin.csv`. Trade-off accepted: the sheet (sleep,
-  mood, stress, notes) is reachable by anyone with the link, no login required.
-
-- **Liftosaur body measurements sync (`sync_liftosaur_body_measurements.py`)** — fetches all measurement keys from the Liftosaur API into `daily_measurements` (dynamic columns, `ALTER TABLE` for new keys). Uses `ON CONFLICT(date) DO UPDATE` touching only the columns present in that run, not `INSERT OR REPLACE` -- replace would null out other columns on a date if a single key's fetch fails or you re-sync just one key.
-- **Tab 1/Tab 3 bodyweight repointed at `daily_measurements`** — `load_weight()` now reads `weight_kg` from the SQLite `daily_measurements` table instead of the no-longer-present `weight_data.xlsx`. That file was the original FeelFit export; once weight/body-fat history moved into the DB (via the Liftosaur measurements sync), the dashboard had been left still pointing at the stale, missing file, silently disabling Tab 1's DOTS section and all of Tab 3.
-- **Liftosaur training log sync (`sync_liftosaur_training_log.py`)** — the only training-data endpoint Liftosaur's API exposes is `GET /history`, which returns each workout as a compact text summary (not structured per-set JSON) — see module docstring for the exact format and the regex parsing approach. Stores only completed SBD (squat/bench/deadlift) working sets in a new `training_log` table (`id` autoincrement PK, `workout_id`, `date`, `exercise`, `reps`, `weight_kg`, `rpe`); warmup sets are excluded entirely (matches what the dashboard already filtered out, and recoverable later via `--full` since the API, not this DB, is the source of truth). No natural per-set unique key exists (identical sets within one `"3x3 100kg"` token are indistinguishable), so re-syncs are idempotent via delete-then-reinsert keyed on `workout_id`, not a column-level upsert. Sets with `0` completed reps (failed attempts, e.g. `"1x0 110kg @10"`) are dropped during parsing, matching the dashboard's pre-existing `Completed Reps > 0` filter — verified against the full historical CSV export that, once that filter is applied, the API parse matches the CSV exactly for every date the CSV covers. `sync_state` (already used by the measurements sync) is reused as-is with `key='training_log'`. Exercise names are stored verbatim as Liftosaur reports them (`"Deadlift"`, not "Conventional Deadlift") to match existing `SBD_EXERCISES`/`EXERCISE_COLORS` without other code changes. `liftosaur_training_log.csv` is no longer read by the dashboard.
-- **Physique calculators: height/wrist/ankle hardcoded, weight/BF/S-B-D pre-filled-but-editable** — height (175cm), wrist (17.5cm), and ankle (24.5cm) circumference aren't logged regularly, so they're module constants (`HEIGHT_CM`/`WRIST_CM`/`ANKLE_CM`) rather than DB-sourced. Current weight, body fat %, and S/B/D 1RM (all-time best e1RM per lift, higher of conv/sumo deadlift) are pre-filled from `daily_measurements`/training data but left as editable `st.number_input`s for what-if scenarios. Target FFMI and target body fat % are pure user inputs (Calculator 2); Calculator 3's own target-BF% input in the original spreadsheet was collapsed into the same Calculator 2 input — one number drives both, since duplicating it added a field without a real use case.
-- **Split the monolithic `powerlifting_dashboard.py` into `lib/` + `tabs/` modules, kept `st.tabs`** — the file had grown to ~1,000 lines with more features queued; separated pure computation (`lib/calculations.py`: e1RM, DOTS, FFMI/Casey-Butt/Nuckols) from cached DB loaders (`lib/data.py`) and constants (`lib/constants.py`), and gave each tab its own `render()` module under `tabs/`. `powerlifting_dashboard.py` is now a thin entrypoint. Considered converting to Streamlit's native multipage (`pages/` + sidebar nav) instead, but rejected — it would replace tabs with sidebar nav and change the UX, which wasn't the goal (purely an internal code reorg, behavior-identical, verified via Playwright screenshots of all four tabs plus a new pytest suite over the extracted pure functions). `lib/` had to be explicitly un-ignored in `.gitignore` — the standard Python template blanket-ignores `lib/` (assuming it's a venv subdirectory), which was swallowing the new package.
+- **e1RM: RTS table for singles, Epley for 2–5 reps, ignore 6+** — locked; don't propose
+  alternatives.
+- **Current-snapshot totals, not rolling peak** (DOTS / `build_totals_df`) — reflects genuine
+  *current* strength, not an all-time peak that may no longer hold.
+- **Unlogged nutrition days skipped, not interpolated** — vacation/irregular days aren't
+  representative of normal eating/expenditure.
+- **TDEE bounds: 7700 kcal/kg fat, 5500 kcal/kg lean** (~2,500 kcal/lb to build muscle incl.
+  synthesis inefficiency); rolling avg pre-seeded from full history. See
+  body-composition-analysis SKILL.md. (Tab 3 still uses a single 7700 both ways — see backlog.)
+- **Storage: SQLite for nutrition/measurements/training, CSV for check-in** — the first three
+  are written by an unattended daily job, where a `UNIQUE(date)` upsert gives clean idempotent
+  incremental writes; check-in stays a full-overwrite CSV because the Google Sheet already holds
+  full history and a service account isn't worth it (GCP gates API enablement behind a billing
+  account even for free tier). Trade-off: the check-in sheet is link-readable, no auth.
+- **Training-log parse choices** — warmups and 0-rep/failed attempts dropped (matches the old
+  CSV filter; recoverable via `--full`, the API is the source of truth); exercise names stored
+  verbatim from Liftosaur (`"Deadlift"`, not "Conventional Deadlift") to match `SBD_EXERCISES`;
+  delete-reinsert per `workout_id` because no natural per-set key exists.
+- **Physique calculators: height/wrist/ankle hardcoded; weight/BF%/S-B-D pre-filled-but-editable**
+  — the three circumferences aren't logged regularly (module constants); current weight/BF%/1RMs
+  are DB-seeded but left editable for what-if scenarios; one target-BF% input drives both Calc 2
+  and Calc 3 (the spreadsheet's duplicate added a field with no real use case).
+- **Split monolith into `lib/` + `tabs/`, kept `st.tabs`** — rejected Streamlit native multipage
+  (`pages/` + sidebar nav) because it would change the UX; this was a behavior-identical internal
+  reorg. (`.gitignore`'s Python-template `lib/` rule had to be un-ignored to track the package.)
+- **UI verification via `dev/screenshot_dashboard.py` + the `run-dashboard` skill, no baseline
+  diffing** — script drives headless Chromium, screenshots every tab, exits non-zero on console
+  errors → pass/fail without reading images back. Baseline diffing skipped as overkill (no CI);
+  pytest + this console-error check is enough.
 
 ## Backlog / Ideas
-_Unsorted brain dump. Triage later. Check one off in place
-when shipped, then move the line to Changelog.
+_Unsorted. Check off in place when shipped, then move the line to CHANGE_LOG._
 
+- [ ] **Recovery tab (Tab 2) rethink** — the check-in-vs-session-quality correlation approach
+  isn't yielding anything useful; reconsider the whole framing.
 - [ ] Sleep debt rolling metric
-- [ ] Nutrition → next-day performance analysis (Cronometer CSV now available)
+- [ ] Nutrition → next-day performance analysis
 - [ ] Overreaching/undertraining detector
 - [ ] Go/no-go session predictor — logistic regression on morning check-in features
-- [ ] Combine body measurements data and Feelfit data to try to estimate how much lean mass am I gaining, add to Nutrition and Weight tab
-- [ ] Add a README.md (currently missing — matters for hiring-manager portfolio review)
-- [ ] Reconcile Tab 3's TDEE calc with the skill's logic — dashboard currently uses a single 7700 kcal/kg conversion both ways (bulk and cut), while the skill does a proper fat/lean dual-bound range. Worth deciding if Tab 3 should adopt the bound logic too, or if the simpler point-estimate is intentional.
-- [ ] find a good way to back-up the database
-- [ ] Widen `sync_liftosaur_training_log.py` beyond SBD lifts if/when other lifts need tracking (table and parser already handle arbitrary exercise names — just relax the `SBD_EXERCISES` filter)
-
-
-
+- [ ] Combine body-measurement + FeelFit data to estimate lean-mass gain; add to Weight &
+  Nutrition tab
+- [ ] Reconcile Tab 3 TDEE with the skill's dual-bound logic (dashboard uses a single 7700 both
+  ways — decide if the bound logic should apply or the point-estimate is intentional)
+- [ ] Database backup strategy
+- [ ] Widen training-log sync beyond SBD (table/parser already handle arbitrary names — just
+  relax the `SBD_EXERCISES` filter)
+- [ ] README.md (missing — matters for portfolio review)

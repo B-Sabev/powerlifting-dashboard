@@ -1,6 +1,10 @@
 ## Changelog
 _Append-only. One line per session, most recent on top._
 
+- 2026-06-25: Added `dev/screenshot_dashboard.py` (Playwright driver that screenshots every
+  dashboard tab and exits non-zero on console errors) and the `run-dashboard` project skill
+  documenting how to launch/verify/teardown the app — this environment has no `chromium-cli`,
+  so the prior approach re-derived a Python Playwright setup from scratch each session.
 - 2026-06-25: Refactored `powerlifting_dashboard.py` (the ~1,000-line monolith) into `lib/`
   (constants, pure calculations, cached DB loaders) + `tabs/` (one `render()` module per tab),
   with the main file now a thin entrypoint. Behavior-identical — verified via a new pytest
