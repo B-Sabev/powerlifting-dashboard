@@ -220,3 +220,6 @@ __marimo__/
 
 # Streamlit
 .streamlit/secrets.toml
+
+# Throwaway screenshots from dev/screenshot_dashboard.py
+dev/screenshots/
