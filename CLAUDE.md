@@ -30,7 +30,13 @@ history; add an entry there after non-trivial work, most recent on top.
 .venv/bin/python3 scripts/sync_liftosaur_training_log.py [--dry-run] [--full] [--db path]
 ```
 
-There is no test suite, linter, or CI config in this repo.
+```bash
+# Run tests (pure functions in lib/calculations.py)
+.venv/bin/python -m pytest
+```
+
+There is a small pytest suite for `lib/calculations.py`'s pure functions (`tests/`); no
+linter or CI config in this repo.
 
 ## Data flow architecture
 
@@ -76,38 +82,47 @@ a single fetch fails or you re-sync just one source/key. `training_log` is multi
 (autoincrement `id` PK) so it instead deletes and reinserts all rows for a given
 `workout_id` on each sync.
 
-## Dashboard structure (`powerlifting_dashboard.py`)
+## Dashboard structure
 
-Single-file Streamlit app, four tabs, each independently gated on its data being available
-(falls back to an `st.info`/`st.stop()` placeholder rather than crashing):
+`powerlifting_dashboard.py` is now a thin entrypoint (page config, data loading, `st.tabs`
+wiring) — it used to be a ~1,000-line monolith; the actual logic was split out by altitude:
 
-- **Tab 1 — SBD Progression**: e1RM over time per lift (RTS RPE table for 1-rep sets,
-  Epley for 2–5 reps, 6+ reps ignored — see `estimate_e1rm()`), DOTS score over time
-  (`build_totals_df()` — current-snapshot totals: for each day a lift was trained, take the
-  most recent session's heaviest set per lift, sum, attach nearest bodyweight; higher of
-  conventional/sumo deadlift used), and an all-time PR table.
-- **Tab 2 — Recovery Correlations**: scatter + Pearson r + correlation heatmap relating
-  daily check-in metrics to session quality / best e1RM on training days.
-- **Tab 3 — Weight & Nutrition**: bulk/cut tracking — dual view of bodyweight (rolling
-  average + target-rate projection) and calorie intake (rolling average + estimated TDEE),
-  merged on `date` (inner join, so only days with both weight and nutrition logged appear).
-  Unlogged nutrition days are skipped, not interpolated, by design (irregular days aren't
-  representative).
-- **Tab 4 — Physique Calculators**: FFMI, target body-composition planner, Casey Butt max
-  muscular potential, gains-to-ceiling, Nuckols powerlifting efficiency, and projected lifts
-  at target/max FFM — ported from `data/body_measurement_calculators.xlsx` (formulas in
-  `ffm`/`ffmi_raw`/`ffmi_normalized`/`casey_butt_max_ffm`/`nuckols_predicted` etc., near
-  `dots_score`). Height/wrist/ankle are hardcoded module constants (`HEIGHT_CM`/`WRIST_CM`/
-  `ANKLE_CM`, not logged regularly); current weight, body fat %, and S/B/D 1RM (all-time
-  best e1RM per lift) are pre-filled from the DB via `load_latest_measurements()` and
-  `session_df` but left editable for what-if scenarios; target FFMI and target body fat %
-  are plain user inputs (the latter also drives Calculator 3, collapsing the spreadsheet's
-  duplicate input).
-
-Data loaders (`load_training`, `load_checkin`, `load_weight`, `load_nutrition`,
-`load_latest_measurements`) are all `@st.cache_data`-decorated and read from
-`data/powerlifting.db` except `load_checkin` (reads `data/daily_checkin.csv` directly); use
-the sidebar "Reload data" button (clears the cache) after re-syncing data rather than
-restarting the app. The DB-backed loaders rename SQL columns back to the dashboard's
-original display-column names at load time (e.g. `exercise` → `"Exercise"`, `reps` →
-`"Completed Reps"`) so downstream Tab 1/2 code is unaffected by the underlying storage.
+- **`lib/constants.py`** — data paths, table names, exercise/check-in column lists, and the
+  physique-calculator parameters (`HEIGHT_CM`/`WRIST_CM`/`ANKLE_CM`, `NUCKOLS_COEF`,
+  `RTS_TABLE`).
+- **`lib/calculations.py`** — pure functions, no Streamlit/DB: `estimate_e1rm` (RTS RPE table
+  for 1-rep sets, Epley for 2–5 reps, 6+ reps ignored), `dots_score`, `trend_line`, and the
+  FFMI/Casey-Butt/Nuckols physique formulas (`ffm`, `ffmi_raw`, `ffmi_normalized`,
+  `ffmi_rating`, `target_ffm_for_ffmi`, `casey_butt_max_ffm`, `nuckols_predicted`). Covered by
+  `tests/test_calculations.py`.
+- **`lib/data.py`** — `@st.cache_data`-decorated loaders (`load_training`, `load_checkin`,
+  `load_weight`, `load_nutrition`, `load_latest_measurements`, `build_totals_df`). All read
+  from `data/powerlifting.db` except `load_checkin` (reads `data/daily_checkin.csv` directly).
+  The DB-backed loaders rename SQL columns back to the dashboard's original display-column
+  names at load time (e.g. `exercise` → `"Exercise"`, `reps` → `"Completed Reps"`) so the
+  `tabs/` modules are unaffected by the underlying storage. Use the sidebar "Reload data"
+  button (clears the cache) after re-syncing data rather than restarting the app.
+- **`tabs/`** — one module per tab, each exposing a single `render(...)` function called from
+  `powerlifting_dashboard.py` inside its `with tabN:` block. Each independently gated on its
+  data being available (falls back to an `st.info`/`st.stop()` placeholder rather than
+  crashing):
+  - **`tabs/progression.py` (Tab 1 — SBD Progression)**: e1RM over time per lift, DOTS score
+    over time (via `build_totals_df()` — current-snapshot totals: for each day a lift was
+    trained, take the most recent session's heaviest set per lift, sum, attach nearest
+    bodyweight; higher of conventional/sumo deadlift used), and an all-time PR table.
+  - **`tabs/recovery.py` (Tab 2 — Recovery Correlations)**: scatter + Pearson r + correlation
+    heatmap relating daily check-in metrics to session quality / best e1RM on training days.
+  - **`tabs/weight_nutrition.py` (Tab 3 — Weight & Nutrition)**: bulk/cut tracking — dual view
+    of bodyweight (rolling average + target-rate projection) and calorie intake (rolling
+    average + estimated TDEE), merged on `date` (inner join, so only days with both weight
+    and nutrition logged appear). Unlogged nutrition days are skipped, not interpolated, by
+    design (irregular days aren't representative).
+  - **`tabs/physique.py` (Tab 4 — Physique Calculators)**: FFMI, target body-composition
+    planner, Casey Butt max muscular potential, gains-to-ceiling, Nuckols powerlifting
+    efficiency, and projected lifts at target/max FFM — ported from
+    `data/body_measurement_calculators.xlsx`. Height/wrist/ankle are hardcoded constants
+    (not logged regularly); current weight, body fat %, and S/B/D 1RM (all-time best e1RM per
+    lift) are pre-filled from the DB via `load_latest_measurements()` and `session_df` but
+    left editable for what-if scenarios; target FFMI and target body fat % are plain user
+    inputs (the latter also drives Calculator 3, collapsing the spreadsheet's duplicate
+    input).

@@ -1,6 +1,13 @@
 ## Changelog
 _Append-only. One line per session, most recent on top._
 
+- 2026-06-25: Refactored `powerlifting_dashboard.py` (the ~1,000-line monolith) into `lib/`
+  (constants, pure calculations, cached DB loaders) + `tabs/` (one `render()` module per tab),
+  with the main file now a thin entrypoint. Behavior-identical — verified via a new pytest
+  suite (`tests/test_calculations.py`) over the extracted pure math, plus Playwright
+  screenshots of all four tabs against a live server showing no console errors. Also fixed
+  `.gitignore` (`lib/` was blanket-ignored as a presumed venv subdirectory, swallowing the
+  new package) and added `pytest` to `requirements.txt`.
 - 2026-06-25: Added a 4th tab, "Physique Calculators" — FFMI, target body-composition
   planner, Casey Butt max muscular potential, gains-to-ceiling, Nuckols efficiency, and
   projected lifts at target/max FFM, ported from `data/body_measurement_calculators.xlsx`
