@@ -20,6 +20,7 @@ from lib.data import (
     load_nutrition,
     load_training,
     load_weight,
+    load_workout_completion,
     build_totals_df,
 )
 from tabs import physique, progression, recovery, weight_nutrition
@@ -49,6 +50,7 @@ weight_df = load_weight(DB_PATH) if DB_PATH.exists() else None
 if weight_df is not None and weight_df.empty:
     weight_df = None
 nutrition_df = load_nutrition(DB_PATH) if DB_PATH.exists() else None
+completion_df = load_workout_completion(DB_PATH) if DB_PATH.exists() else None
 totals_df = build_totals_df(sets_df, weight_df) if weight_df is not None and sets_df is not None else None
 latest_weight, latest_weight_date, latest_bf, latest_bf_date = load_latest_measurements(DB_PATH)
 
@@ -61,7 +63,7 @@ with tab1:
     progression.render(session_df, sets_df, totals_df)
 
 with tab2:
-    recovery.render(session_df, sets_df, checkin_df)
+    recovery.render(session_df, sets_df, checkin_df, completion_df)
 
 with tab3:
     weight_nutrition.render(weight_df, nutrition_df)

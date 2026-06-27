@@ -1,6 +1,21 @@
 ## Changelog
 _Append-only. One line per session, most recent on top._
 
+- 2026-06-27: Added "% of planned workout completed" metric to Tab 2 — hybrid model using
+  Liftosaur history `target:` segments (resolves dynamic add-set logic) plus program-day
+  Liftoscript lookup for entirely-skipped exercises; new `workout_completion` DB table; metric
+  selectable as both predictor and outcome with self-correlation guard.
+
+- 2026-06-25: Redesigned Tab 2 (Recovery Correlations): new `relative_e1rm` outcome (each
+  session's e1RM ÷ that lift's own trailing baseline, replacing lift-identity- and
+  trend-confounded raw e1RM), engineered rolling-sleep and ACWR predictors
+  (`lib/calculations.py`: `relative_e1rm`, `acwr`), Spearman instead of Pearson, and a new
+  standardized-ridge-regression chart (`ridge_standardized_coefs`) for each factor's unique
+  contribution. Also fixed a pre-existing bug in the correlation heatmap where bar labels
+  were paired with the wrong bar's value (built from `CORR_PREDICTORS`'s dict-insertion
+  order instead of the sorted correlation series' own index) — likely the real cause of the
+  "nonsense" correlations that prompted this rethink. 8 new tests added to
+  `tests/test_calculations.py`; verified against real data and via Playwright screenshots.
 - 2026-06-25: Added `dev/screenshot_dashboard.py` (Playwright driver that screenshots every
   dashboard tab and exits non-zero on console errors) and the `run-dashboard` project skill
   documenting how to launch/verify/teardown the app — this environment has no `chromium-cli`,

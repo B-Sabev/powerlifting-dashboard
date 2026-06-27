@@ -20,6 +20,7 @@ from lib.constants import (
     NUMERIC_CHECKIN,
     NUTRITION_TABLE,
     TRAINING_TABLE,
+    WORKOUT_COMPLETION_TABLE,
 )
 
 
@@ -129,6 +130,33 @@ def load_latest_measurements(db_path: Path):
     weight_date, weight = weight_row if weight_row else (None, None)
     bf_date, body_fat = bf_row if bf_row else (None, None)
     return weight, weight_date, body_fat, bf_date
+
+
+@st.cache_data
+def load_workout_completion(db_path: Path) -> pd.DataFrame:
+    """Per-workout % of planned sets completed, from workout_completion table.
+
+    Clipped to 100 so substitutions (skip 3 planned, do 3 unplanned) read as 100%, not 150%.
+    Requires running sync_liftosaur_training_log.py --full to backfill historical workouts.
+    """
+    conn = sqlite3.connect(db_path)
+    try:
+        df = pd.read_sql_query(
+            f"""SELECT date,
+                       SUM(planned_sets)   AS planned_sets,
+                       SUM(completed_sets) AS completed_sets
+                FROM {WORKOUT_COMPLETION_TABLE}
+               WHERE planned_sets > 0
+               GROUP BY date""",
+            conn,
+        )
+    finally:
+        conn.close()
+    if df.empty:
+        return df
+    df["date"] = pd.to_datetime(df["date"]).dt.normalize()
+    df["pct_planned_completed"] = (df["completed_sets"] / df["planned_sets"] * 100).clip(upper=100)
+    return df[["date", "pct_planned_completed"]]
 
 
 @st.cache_data

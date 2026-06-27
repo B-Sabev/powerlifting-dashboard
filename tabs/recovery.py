@@ -27,7 +27,7 @@ def _rolling_series_to_df(series: pd.Series, col_name: str) -> pd.DataFrame:
     return series.rename_axis("date").reset_index(name=col_name)
 
 
-def render(session_df: pd.DataFrame, sets_df: pd.DataFrame, checkin_df: pd.DataFrame | None) -> None:
+def render(session_df: pd.DataFrame, sets_df: pd.DataFrame, checkin_df: pd.DataFrame | None, completion_df: pd.DataFrame | None = None) -> None:
     if checkin_df is None:
         st.info("👈 Upload your daily check-in CSV to unlock this tab.")
         st.stop()
@@ -67,31 +67,46 @@ def render(session_df: pd.DataFrame, sets_df: pd.DataFrame, checkin_df: pd.DataF
         .merge(rolling_sleep, on="date", how="left")
         .merge(acwr_df, on="date", how="left")
     )
+    if completion_df is not None and not completion_df.empty:
+        joined = joined.merge(completion_df, on="date", how="left")
+    else:
+        joined["pct_planned_completed"] = float("nan")
     joined = joined[joined["session_quality"].notna()]
 
     st.caption(
         f"Based on {len(joined)} training days with check-in and session quality logged."
         f" · {joined['relative_e1rm'].notna().sum()} days also have a relative-e1RM reading"
         f" (needs {RELATIVE_E1RM_MIN_PERIODS}+ prior sessions on that lift)."
-    )
-    st.caption(
-        "⚠️ Small-sample caveat: with ~40 training days and 13 predictors, individual "
-        "correlations and the ridge coefficients below should be read as directional, not "
-        "definitive — several sit close to the noise floor at this n."
+        f" · {joined['pct_planned_completed'].notna().sum()} days have workout-completion data"
+        " (run sync --full to backfill)."
     )
 
+    # ── Selectors ───────────────────────────────────────────────────────────
+    OUTCOMES = {
+        "Relative e1RM":        "relative_e1rm",
+        "Session Quality":      "session_quality",
+        "Workout Completion %": "pct_planned_completed",
+    }
     col_a, col_b = st.columns(2)
-    with col_a:
-        x_var_label = st.selectbox("X axis (predictor)", list(CORR_PREDICTORS.keys()), index=0)
     with col_b:
-        y_var_label = st.selectbox(
-            "Y axis (outcome)",
-            ["Relative e1RM", "Session Quality"],
-            index=0,
-        )
+        y_var_label = st.selectbox("Y axis (outcome)", list(OUTCOMES.keys()), index=0)
+    y_col = OUTCOMES[y_var_label]
 
-    x_col = CORR_PREDICTORS[x_var_label]
-    y_col = "relative_e1rm" if y_var_label == "Relative e1RM" else "session_quality"
+    # Self-correlation guard: when the chosen outcome is also a predictor
+    # (Workout Completion %), exclude it from the X-axis and all multivariate
+    # charts so it can't correlate with itself (r=1 artefact).
+    active_preds = {k: v for k, v in CORR_PREDICTORS.items() if v != y_col}
+    label_by_col = {v: k for k, v in active_preds.items()}
+
+    with col_a:
+        x_var_label = st.selectbox("X axis (predictor)", list(active_preds.keys()), index=0)
+    x_col = active_preds[x_var_label]
+
+    st.caption(
+        f"⚠️ Small-sample caveat: with ~40 training days and {len(active_preds)} predictors, "
+        "individual correlations and the ridge coefficients below should be read as directional, "
+        "not definitive — several sit close to the noise floor at this n."
+    )
 
     plot_data = joined[[x_col, y_col, "date", "notes"]].dropna(subset=[x_col, y_col])
 
@@ -132,8 +147,7 @@ def render(session_df: pd.DataFrame, sets_df: pd.DataFrame, checkin_df: pd.DataF
     st.divider()
     st.subheader(f"Correlation matrix — all predictors vs {y_var_label}")
 
-    label_by_col = {v: k for k, v in CORR_PREDICTORS.items()}
-    corr_cols = list(CORR_PREDICTORS.values()) + [y_col]
+    corr_cols = list(active_preds.values()) + [y_col]
     # Note: no listwise dropna() here on purpose — pandas' .corr() already
     # computes each pair on its own pairwise-complete rows. Dropping any row
     # missing *any* predictor before correlating would silently shrink n and
@@ -172,7 +186,7 @@ def render(session_df: pd.DataFrame, sets_df: pd.DataFrame, checkin_df: pd.DataF
         "each bar is that factor's effect *holding the others fixed*."
     )
 
-    X = joined[list(CORR_PREDICTORS.values())]
+    X = joined[list(active_preds.values())]
     complete_rows = X.assign(__y__=joined[y_col]).dropna()
 
     if len(complete_rows) >= 10:

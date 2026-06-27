@@ -37,16 +37,39 @@ _Locked choices, compressed to the "why." Don't re-litigate without a strong rea
   diffing** — script drives headless Chromium, screenshots every tab, exits non-zero on console
   errors → pass/fail without reading images back. Baseline diffing skipped as overkill (no CI);
   pytest + this console-error check is enough.
+- **Tab 2 outcome: per-lift relative e1RM, not raw e1RM** — raw e1RM mixed lift-identity
+  (deadlift e1RM dwarfs bench e1RM) into what was meant to be a recovery-vs-performance signal,
+  and drifted upward over a training cycle; dividing each session by that lift's own trailing
+  baseline (`relative_e1rm`) fixes both at once. `session_quality` kept as a secondary,
+  selectable outcome (cheap to keep, useful as a sanity cross-check against the objective one).
+- **Tab 2 stats: Spearman not Pearson, plus a ridge regression for unique contribution** —
+  check-in inputs are ordinal Likert scales (small sample, ties), so rank correlation is the
+  right tool; ridge (standardized, L2-penalized) regression was added on top because the
+  predictors are inter-correlated (sleep moves with fatigue/mood) and univariate correlation
+  can't separate "this factor matters" from "this factor's correlated with the one that
+  matters" — n≈44 makes an unregularized multiple regression unstable, hence the L2 penalty.
+- **PCA considered and rejected for Tab 2** — underpowered at n≈44 and the wrong tool anyway
+  (PCA finds variance in the *predictors*, not their relationship to the outcome); ridge
+  regression is the supervised analogue and was used instead.
+- **Heatmap label/value mispairing bug (pre-existing, found this session)** — the Tab 2
+  correlation-heatmap bar chart built its y-axis labels by filtering
+  `CORR_PREDICTORS.items()` in dict-insertion order while the bar *values* were sorted by
+  correlation strength, silently pairing each label with the wrong bar's value (e.g. Sleep
+  Hours could show another predictor's correlation). This was present in the very first
+  version of the tab and is the likely real explanation for the "nonsense" correlations that
+  motivated the Tab 2 rethink — not (only) stale `@st.cache_data`. Fixed by deriving labels
+  from the correlation series' own sorted index via the reversed `CORR_PREDICTORS` dict.
 
 ## Backlog / Ideas
 _Unsorted. Check off in place when shipped, then move the line to CHANGE_LOG._
 
-- [ ] **Recovery tab (Tab 2) rethink** — the check-in-vs-session-quality correlation approach
-  isn't yielding anything useful; reconsider the whole framing.
-- [ ] Sleep debt rolling metric
+- [ ] Liftosaur "% of planned workout completed" — pull planned-vs-completed set data from the
+  Liftosaur API as a second, objective Tab 2 outcome alongside relative e1RM.
 - [ ] Nutrition → next-day performance analysis
 - [ ] Overreaching/undertraining detector
-- [ ] Go/no-go session predictor — logistic regression on morning check-in features
+- [ ] Go/no-go session predictor — logistic regression on morning check-in features; reuse
+  Tab 2's `relative_e1rm` outcome and the standardized ridge factor weights as its starting
+  point rather than refitting from scratch.
 - [ ] Combine body-measurement + FeelFit data to estimate lean-mass gain; add to Weight &
   Nutrition tab
 - [ ] Reconcile Tab 3 TDEE with the skill's dual-bound logic (dashboard uses a single 7700 both

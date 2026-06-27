@@ -17,6 +17,7 @@ CHECKIN_PATH = DATA_DIR / "daily_checkin.csv"
 # are those scripts' inputs, not something the dashboard reads directly.
 DB_PATH = DATA_DIR / "powerlifting.db"
 TRAINING_TABLE = "training_log"
+WORKOUT_COMPLETION_TABLE = "workout_completion"
 NUTRITION_TABLE = "cronometer_daily_nutrition"
 MEASUREMENTS_TABLE = "daily_measurements"
 
@@ -55,6 +56,7 @@ CORR_PREDICTORS = {
     "Rolling Sleep (3d)":  "rolling_sleep_3",
     "Rolling Sleep (7d)":  "rolling_sleep_7",
     "ACWR":                "acwr",
+    "Workout Completion %": "pct_planned_completed",
 }
 
 # ── Tab 2 (Recovery) feature-engineering windows ─────────────────────────────

@@ -73,6 +73,15 @@ script under `scripts/`. The dashboard itself never writes to the DB — it only
    backfill — the API holds full history, no separate backfill script needed). Warmup sets
    and failed/0-rep attempts are dropped during parsing, matching what the dashboard already
    filtered out of the old CSV export.
+   The same sync script also writes a **`workout_completion`** table (one row per workout,
+   `workout_id` PK) with `planned_sets` and `completed_sets` for the Tab 2 "% of planned
+   workout completed" metric. Planned sets use a **hybrid model**: (A) the history text's
+   `target:` segment for any exercise that was started — this already resolves Liftoscript
+   `update:` logic (dynamic add-sets at runtime) — plus (B) base set-counts from the program
+   definition (`GET /api/v1/programs/{id}`) for exercises completely skipped. The script
+   fetches all programs once per sync run via `GET /api/v1/programs` and matches them to
+   workouts via the `program:` / `week:` / `dayName:` metadata in each workout's header.
+   Freeform and imported workouts (no program metadata) fall back to target-only (part A).
 
 All sync scripts are idempotent (safe to re-run / re-import overlapping data) and are
 chained together in a single daily run by `/etc/cron.daily/powerlifting-dashboard-sync`
@@ -94,13 +103,17 @@ wiring) — it used to be a ~1,000-line monolith; the actual logic was split out
   physique-calculator parameters (`HEIGHT_CM`/`WRIST_CM`/`ANKLE_CM`, `NUCKOLS_COEF`,
   `RTS_TABLE`).
 - **`lib/calculations.py`** — pure functions, no Streamlit/DB: `estimate_e1rm` (RTS RPE table
-  for 1-rep sets, Epley for 2–5 reps, 6+ reps ignored), `dots_score`, `trend_line`, and the
+  for 1-rep sets, Epley for 2–5 reps, 6+ reps ignored), `dots_score`, `trend_line`, the
   FFMI/Casey-Butt/Nuckols physique formulas (`ffm`, `ffmi_raw`, `ffmi_normalized`,
-  `ffmi_rating`, `target_ffm_for_ffmi`, `casey_butt_max_ffm`, `nuckols_predicted`). Covered by
-  `tests/test_calculations.py`.
+  `ffmi_rating`, `target_ffm_for_ffmi`, `casey_butt_max_ffm`, `nuckols_predicted`), and the
+  Tab 2 recovery features: `relative_e1rm` (each session's e1RM ÷ trailing mean of that same
+  lift's previous sessions), `acwr` (acute:chronic training-load ratio), and
+  `ridge_standardized_coefs` (standardized ridge-regression coefficients via `statsmodels`).
+  Covered by `tests/test_calculations.py`.
 - **`lib/data.py`** — `@st.cache_data`-decorated loaders (`load_training`, `load_checkin`,
-  `load_weight`, `load_nutrition`, `load_latest_measurements`, `build_totals_df`). All read
-  from `data/powerlifting.db` except `load_checkin` (reads `data/daily_checkin.csv` directly).
+  `load_weight`, `load_nutrition`, `load_latest_measurements`, `load_workout_completion`,
+  `build_totals_df`). All read from `data/powerlifting.db` except `load_checkin` (reads
+  `data/daily_checkin.csv` directly).
   The DB-backed loaders rename SQL columns back to the dashboard's original display-column
   names at load time (e.g. `exercise` → `"Exercise"`, `reps` → `"Completed Reps"`) so the
   `tabs/` modules are unaffected by the underlying storage. Because these are
@@ -114,8 +127,20 @@ wiring) — it used to be a ~1,000-line monolith; the actual logic was split out
     over time (via `build_totals_df()` — current-snapshot totals: for each day a lift was
     trained, take the most recent session's heaviest set per lift, sum, attach nearest
     bodyweight; higher of conventional/sumo deadlift used), and an all-time PR table.
-  - **`tabs/recovery.py` (Tab 2 — Recovery Correlations)**: scatter + Pearson r + correlation
-    heatmap relating daily check-in metrics to session quality / best e1RM on training days.
+  - **`tabs/recovery.py` (Tab 2 — Recovery Correlations)**: scatter + Spearman r + correlation
+    heatmap + a standardized-ridge-regression chart, relating daily check-in metrics (plus
+    engineered rolling-sleep, ACWR, and workout-completion predictors) to three selectable
+    outcomes: relative e1RM, session quality, or workout completion %. Relative e1RM
+    (`lib.calculations.relative_e1rm`) — each session's e1RM divided by that same lift's
+    trailing baseline — is the primary outcome, not raw e1RM: raw e1RM is dominated by
+    *which* lift was trained that day and drifts upward over a training cycle, both of which
+    this normalizes away. "Workout completion %" is also selectable as an outcome (backed by
+    `workout_completion` table — see Data flow §4), with a **self-correlation guard**: when
+    it's chosen as the outcome it's excluded from the predictor list so it can't appear on
+    both axes. The heatmap and ridge chart build `active_preds` per render (= `CORR_PREDICTORS`
+    minus the selected outcome column) and use `{v: k for k, v in active_preds.items()}` for
+    label lookup, keyed off the *correlation series' own index* — not insertion order — since
+    bars are sorted by value.
   - **`tabs/weight_nutrition.py` (Tab 3 — Weight & Nutrition)**: bulk/cut tracking — dual view
     of bodyweight (rolling average + target-rate projection) and calorie intake (rolling
     average + estimated TDEE), merged on `date` (inner join, so only days with both weight
