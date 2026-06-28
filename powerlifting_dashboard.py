@@ -34,7 +34,10 @@ st.set_page_config(
 
 # ── App shell ─────────────────────────────────────────────────────────────────
 st.title("Powerlifting Analytics")
-st.caption("SBD progression · Recovery correlations · Session quality")
+st.caption("A personal dashboard for tracking training, nutrition and recovery metrics, \
+           integrating data from Liftosaur(gym logging app), Cronometer(nutrition tracker) "
+           "and a custom daily check-in form. It analyses lift progression, sleep patterns \
+            tracks body composition changes and correlates gym performance with lifestyle factors.")
 
 # ── Load data ─────────────────────────────────────────────────────────────────
 if not DB_PATH.exists():
