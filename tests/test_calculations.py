@@ -22,6 +22,9 @@ from lib.calculations import (
     nuckols_predicted,
     relative_e1rm,
     ridge_standardized_coefs,
+    sleep_consistency_metrics,
+    sleep_regularity_index,
+    sleep_timing,
     target_ffm_for_ffmi,
     trend_line,
 )
@@ -162,6 +165,199 @@ def test_ridge_standardized_coefs_favors_the_correlated_predictor():
     assert coefs["x1"] == pytest.approx(0.4887280, abs=1e-5)
     assert coefs["x2"] == pytest.approx(0.0759158, abs=1e-5)
     assert coefs["x1"] > coefs["x2"]
+
+
+# ── sleep_timing ──────────────────────────────────────────────────────────────
+
+def _make_timing_input(**overrides):
+    """Minimal two-row check-in DataFrame for sleep tests."""
+    base = dict(
+        date=pd.to_datetime(["2026-05-07", "2026-05-08"]),
+        bed_time=["22:45:00", "23:00:00"],
+        awake_time=["06:00:00", "06:30:00"],
+        sleep_hours=[7.0, 6.5],
+        work_hours=[8.0, 0.0],
+    )
+    base.update(overrides)
+    return pd.DataFrame(base)
+
+
+def test_sleep_timing_midnight_wrap():
+    """02:30 bed time (hour < 12) must be noon-anchored to 26.5."""
+    df = pd.DataFrame({
+        "date": pd.to_datetime(["2026-05-10"]),
+        "bed_time": ["02:30:00"],
+        "awake_time": ["09:00:00"],
+        "sleep_hours": [6.0],
+        "work_hours": [0.0],
+    })
+    t = sleep_timing(df)
+    assert t["bedtime_h"].iloc[0] == pytest.approx(26.5)
+
+
+def test_sleep_timing_evening_no_wrap():
+    """22:45 bed time (hour ≥ 12) stays at 22.75 — no wrap applied."""
+    df = pd.DataFrame({
+        "date": pd.to_datetime(["2026-05-08"]),
+        "bed_time": ["22:45:00"],
+        "awake_time": ["06:00:00"],
+        "sleep_hours": [7.0],
+        "work_hours": [8.0],
+    })
+    t = sleep_timing(df)
+    assert t["bedtime_h"].iloc[0] == pytest.approx(22.75)
+    assert t["waketime_h"].iloc[0] == pytest.approx(6.0)
+
+
+def test_sleep_timing_time_in_bed():
+    """22:45 bed → 06:00 wake is 7.25 h in bed."""
+    df = pd.DataFrame({
+        "date": pd.to_datetime(["2026-05-08"]),
+        "bed_time": ["22:45:00"],
+        "awake_time": ["06:00:00"],
+        "sleep_hours": [7.0],
+        "work_hours": [8.0],
+    })
+    t = sleep_timing(df)
+    assert t["time_in_bed_h"].iloc[0] == pytest.approx(7.25)
+
+
+def test_sleep_timing_efficiency():
+    """Efficiency = sleep_hours / time_in_bed_h (< 1 when awake in bed)."""
+    df = pd.DataFrame({
+        "date": pd.to_datetime(["2026-05-08"]),
+        "bed_time": ["22:45:00"],
+        "awake_time": ["06:00:00"],
+        "sleep_hours": [6.5],
+        "work_hours": [8.0],
+    })
+    t = sleep_timing(df)
+    assert t["sleep_efficiency"].iloc[0] == pytest.approx(6.5 / 7.25)
+
+
+def test_sleep_timing_drops_missing():
+    """Rows with a blank bed_time or awake_time are silently dropped."""
+    df = pd.DataFrame({
+        "date": pd.to_datetime(["2026-05-07", "2026-05-08"]),
+        "bed_time": [float("nan"), "22:45:00"],
+        "awake_time": ["06:00:00", "06:00:00"],
+        "sleep_hours": [7.0, 7.0],
+        "work_hours": [8.0, 8.0],
+    })
+    t = sleep_timing(df)
+    assert len(t) == 1
+
+
+def test_sleep_timing_midnight_close_to_next_evening():
+    """23:00 and 01:00 should be ~2 h apart, not ~22 h apart."""
+    df = pd.DataFrame({
+        "date": pd.to_datetime(["2026-05-07", "2026-05-08"]),
+        "bed_time": ["23:00:00", "01:00:00"],
+        "awake_time": ["06:00:00", "08:00:00"],
+        "sleep_hours": [7.0, 7.0],
+        "work_hours": [8.0, 0.0],
+    })
+    t = sleep_timing(df)
+    diff = abs(t["bedtime_h"].iloc[1] - t["bedtime_h"].iloc[0])
+    assert diff == pytest.approx(2.0)  # 25.0 - 23.0 = 2 h, not 22 h
+
+
+# ── sleep_regularity_index ───────────────────────────────────────────────────
+
+def test_sleep_regularity_index_perfect():
+    """Identical schedule three nights in a row → SRI = 100."""
+    df = pd.DataFrame({
+        "date": pd.to_datetime(["2026-05-07", "2026-05-08", "2026-05-09"]),
+        "bed_time": ["23:00:00"] * 3,
+        "awake_time": ["06:30:00"] * 3,
+        "sleep_hours": [7.0] * 3,
+        "work_hours": [8.0] * 3,
+    })
+    t = sleep_timing(df)
+    assert sleep_regularity_index(t) == pytest.approx(100.0)
+
+
+def test_sleep_regularity_index_shifted():
+    """A 4-hour bedtime shift between consecutive nights → SRI < 100."""
+    df = pd.DataFrame({
+        "date": pd.to_datetime(["2026-05-07", "2026-05-08"]),
+        "bed_time": ["22:00:00", "02:00:00"],
+        "awake_time": ["06:00:00", "10:00:00"],
+        "sleep_hours": [8.0, 8.0],
+        "work_hours": [8.0, 0.0],
+    })
+    t = sleep_timing(df)
+    assert sleep_regularity_index(t) < 100.0
+
+
+def test_sleep_regularity_index_non_consecutive_skipped():
+    """A 3-day gap between the only two logged nights → no pairs → NaN."""
+    df = pd.DataFrame({
+        "date": pd.to_datetime(["2026-05-07", "2026-05-10"]),
+        "bed_time": ["23:00:00", "23:00:00"],
+        "awake_time": ["06:30:00", "06:30:00"],
+        "sleep_hours": [7.0, 7.0],
+        "work_hours": [8.0, 0.0],
+    })
+    t = sleep_timing(df)
+    assert math.isnan(sleep_regularity_index(t))
+
+
+def test_sleep_regularity_index_single_night_nan():
+    """Cannot compute SRI from a single night."""
+    df = pd.DataFrame({
+        "date": pd.to_datetime(["2026-05-07"]),
+        "bed_time": ["23:00:00"],
+        "awake_time": ["06:00:00"],
+        "sleep_hours": [7.0],
+        "work_hours": [8.0],
+    })
+    t = sleep_timing(df)
+    assert math.isnan(sleep_regularity_index(t))
+
+
+# ── sleep_consistency_metrics ────────────────────────────────────────────────
+
+def test_sleep_consistency_metrics_social_jetlag():
+    """Social jetlag = |mean mid-sleep(free) − mean mid-sleep(work)|."""
+    df = pd.DataFrame({
+        "date": pd.to_datetime(["2026-05-07", "2026-05-08"]),
+        "bed_time": ["23:00:00", "01:00:00"],   # work day early, free day late
+        "awake_time": ["06:00:00", "09:00:00"],
+        "sleep_hours": [7.0, 8.0],
+        "work_hours": [8.0, 0.0],
+    })
+    t = sleep_timing(df)
+    m = sleep_consistency_metrics(t)
+    # Work: bed=23.0, TIB=7h, mid=26.5
+    # Free: bed=25.0 (01:00 + 24), TIB=8h, mid=29.0
+    # Social jetlag = |29.0 - 26.5| = 2.5 h
+    assert m["social_jetlag"] == pytest.approx(2.5)
+
+
+def test_sleep_consistency_metrics_empty():
+    """Empty input returns all NaN with n_nights=0."""
+    t = pd.DataFrame(columns=["date", "bedtime_h", "waketime_h", "mid_sleep_h",
+                               "time_in_bed_h", "sleep_hours", "sleep_efficiency", "is_work_day"])
+    m = sleep_consistency_metrics(t)
+    assert m["n_nights"] == 0
+    assert math.isnan(m["sri"])
+    assert math.isnan(m["social_jetlag"])
+
+
+def test_sleep_consistency_metrics_sd_units():
+    """SD metrics are returned in minutes (not hours)."""
+    df = pd.DataFrame({
+        "date": pd.to_datetime(["2026-05-07", "2026-05-08"]),
+        "bed_time": ["22:00:00", "23:00:00"],   # 1-hour SD → 60 min
+        "awake_time": ["06:00:00", "06:00:00"],
+        "sleep_hours": [8.0, 7.0],
+        "work_hours": [8.0, 8.0],
+    })
+    t = sleep_timing(df)
+    m = sleep_consistency_metrics(t)
+    # SD of bedtime: std([22.0, 23.0]) * 60 ≈ std_ddof1([22,23]) * 60 = 0.7071… * 60 ≈ 42.43
+    assert m["sd_bedtime"] == pytest.approx(pd.Series([22.0, 23.0]).std() * 60, rel=1e-4)
 
 
 # ── trend_line reused for the rolling-sleep predictor ─────────────────────────

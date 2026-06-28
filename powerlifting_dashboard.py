@@ -23,7 +23,7 @@ from lib.data import (
     load_workout_completion,
     build_totals_df,
 )
-from tabs import physique, progression, recovery, weight_nutrition
+from tabs import physique, progression, recovery, sleep, weight_nutrition
 
 # ── Page config ──────────────────────────────────────────────────────────────
 st.set_page_config(
@@ -55,8 +55,8 @@ totals_df = build_totals_df(sets_df, weight_df) if weight_df is not None and set
 latest_weight, latest_weight_date, latest_bf, latest_bf_date = load_latest_measurements(DB_PATH)
 
 # ── Tab layout ────────────────────────────────────────────────────────────────
-tab1, tab2, tab3, tab4 = st.tabs(
-    ["SBD Progression", "Recovery Correlations", "Weight & Nutrition", "Physique Calculators"]
+tab1, tab2, tab3, tab4, tab5 = st.tabs(
+    ["SBD Progression", "Recovery Correlations", "Weight & Nutrition", "Physique Calculators", "Sleep Consistency"]
 )
 
 with tab1:
@@ -70,3 +70,6 @@ with tab3:
 
 with tab4:
     physique.render(session_df, latest_weight, latest_weight_date, latest_bf, latest_bf_date)
+
+with tab5:
+    sleep.render(checkin_df)

@@ -35,7 +35,7 @@ CHECKIN_COLS = [
     "date", "bed_time", "awake_time", "sleep_hours", "sleep_quality", "nap_hours",
     "work_physical_load", "work_hours", "muscle_soreness", "joint_pain",
     "overall_fatigue", "mood", "life_stress", "training_motivation",
-    "trained_today", "session_quality", "notes",
+    "trained_today", "session_quality", "notes", "intervention",
 ]
 NUMERIC_CHECKIN = [
     "sleep_hours", "sleep_quality", "nap_hours", "work_physical_load",
@@ -85,6 +85,22 @@ NUCKOLS_COEF = {
     "Deadlift": (410.2, 102.5),
     "Total":    (1448.53, 77.32),
 }
+
+# ── Tab 5 (Sleep Consistency) ─────────────────────────────────────────────────
+# Ordered label → internal key map; governs display order in rolling-line
+# selectbox and comparison-table rows (SRI and Social Jetlag first per user pref).
+SLEEP_METRIC_LABELS: dict[str, str] = {
+    "Sleep Regularity Index (0–100)": "sri",
+    "Social Jetlag (h)":              "social_jetlag",
+    "SD of Mid-sleep (min)":          "sd_mid_sleep",
+    "SD of Bedtime (min)":            "sd_bedtime",
+    "SD of Wake time (min)":          "sd_waketime",
+    "SD of Sleep Duration (min)":     "sd_duration",
+    "Mean Sleep Efficiency (%)":      "mean_efficiency",
+    "SD of Sleep Efficiency (%)":     "sd_efficiency",
+}
+# Default rolling window for sleep consistency metrics (nights).
+SLEEP_ROLL_WINDOW = 14
 
 # ── e1RM estimation ──────────────────────────────────────────────────────────
 # RTS RPE table: (reps, RPE) -> fraction of 1RM

@@ -58,10 +58,13 @@ script under `scripts/`. The dashboard itself never writes to the DB — it only
    (a `sync_state` table tracks the last-synced timestamp per measurement key); `--full`
    forces a complete re-pull. Requires `LIFTOSAUR_API_KEY` in `.env` (copy from
    `.env.example`).
-3. **Daily check-in** (sleep, mood, stress, soreness, session quality, notes) — a Google
-   Sheet shared as "Anyone with the link" → `scripts/sync_checkin.py` downloads it via the
-   public CSV export URL and **fully overwrites** `data/daily_checkin.csv` (no DB, no
-   upsert — the sheet already holds full history, append-only, in Google Sheets).
+3. **Daily check-in** (sleep, mood, stress, soreness, session quality, notes, and an optional
+   `Intervention` free-text column) — a Google Sheet shared as "Anyone with the link" →
+   `scripts/sync_checkin.py` downloads it via the public CSV export URL and **fully overwrites**
+   `data/daily_checkin.csv` (no DB, no upsert — the sheet already holds full history,
+   append-only, in Google Sheets). The `Intervention` column (18th column) is free-text: when
+   non-blank on a given date, Tab 5 draws an annotated vertical marker on that date across all
+   its charts. Log an intervention's *start date* here (e.g. "5 min meditation before bed").
 4. **Training log** (SBD working sets — squat/bench/deadlift, for now) — Liftosaur API →
    `scripts/sync_liftosaur_training_log.py` → `training_log` table. Liftosaur's API has no
    structured per-set endpoint; the only training-data endpoint (`GET /history`) returns
@@ -105,10 +108,14 @@ wiring) — it used to be a ~1,000-line monolith; the actual logic was split out
 - **`lib/calculations.py`** — pure functions, no Streamlit/DB: `estimate_e1rm` (RTS RPE table
   for 1-rep sets, Epley for 2–5 reps, 6+ reps ignored), `dots_score`, `trend_line`, the
   FFMI/Casey-Butt/Nuckols physique formulas (`ffm`, `ffmi_raw`, `ffmi_normalized`,
-  `ffmi_rating`, `target_ffm_for_ffmi`, `casey_butt_max_ffm`, `nuckols_predicted`), and the
+  `ffmi_rating`, `target_ffm_for_ffmi`, `casey_butt_max_ffm`, `nuckols_predicted`), the
   Tab 2 recovery features: `relative_e1rm` (each session's e1RM ÷ trailing mean of that same
   lift's previous sessions), `acwr` (acute:chronic training-load ratio), and
-  `ridge_standardized_coefs` (standardized ridge-regression coefficients via `statsmodels`).
+  `ridge_standardized_coefs` (standardized ridge-regression coefficients via `statsmodels`);
+  and the Tab 5 sleep functions: `sleep_timing` (parses bed/wake clock times, noon-anchors
+  bedtimes across midnight), `sleep_regularity_index` (SRI: epoch-concordance between
+  consecutive nights, 0–100), `sleep_consistency_metrics` (full metric bundle: SRI, social
+  jetlag, SD of mid-sleep/bedtime/wake/duration, mean efficiency, SD efficiency).
   Covered by `tests/test_calculations.py`.
 - **`lib/data.py`** — `@st.cache_data`-decorated loaders (`load_training`, `load_checkin`,
   `load_weight`, `load_nutrition`, `load_latest_measurements`, `load_workout_completion`,
@@ -155,3 +162,12 @@ wiring) — it used to be a ~1,000-line monolith; the actual logic was split out
     left editable for what-if scenarios; target FFMI and target body fat % are plain user
     inputs (the latter also drives Calculator 3, collapsing the spreadsheet's duplicate
     input).
+  - **`tabs/sleep.py` (Tab 5 — Sleep Consistency)**: three sections — (a) a nightly sleep
+    schedule chart (bedtime + wake time as line/scatter, Y-axis labelled with clock times;
+    bedtimes noon-anchored so 00:30 plots at 24.5 not 0.5, keeping the scale continuous
+    across midnight); (b) a rolling consistency metric line chart (selectbox for metric,
+    window slider, default 14 nights); (c) a Period A vs Period B comparison table (two
+    date-range pickers, auto-defaults to equal-length windows before/after the latest
+    intervention). All three charts draw annotated dashed vertical lines for any date in the
+    check-in sheet where the `Intervention` column is non-blank. Gated on ≥ 7 nights with
+    bed/wake times logged.

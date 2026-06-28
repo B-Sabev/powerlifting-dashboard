@@ -126,6 +126,155 @@ def ridge_standardized_coefs(X: pd.DataFrame, y: pd.Series, alpha: float = 1.0) 
     return params.drop("const")
 
 
+# ── Sleep consistency (Tab 5) ────────────────────────────────────────────────
+
+def sleep_timing(checkin_df: pd.DataFrame) -> pd.DataFrame:
+    """Parse bed/wake clock times into per-night derived quantities.
+
+    Returns a DataFrame with one row per night where both bed_time and awake_time
+    are logged and parseable. All other rows are dropped.
+
+    Midnight-wrap (the key subtlety): bedtimes are noon-anchored — if the raw
+    hour < 12 (i.e. a post-midnight bedtime), 24 is added. So 00:30 → 24.5 and
+    02:00 → 26.0. This keeps evening and early-morning bedtimes on a continuous
+    linear scale for SD and mid-sleep calculations, without circular-statistics
+    complexity. Wake times are always morning hours, no wrap needed.
+
+    Columns returned:
+        date            – the check-in date (Timestamp)
+        bedtime_h       – noon-anchored bedtime in hours (~18–30 range)
+        waketime_h      – wake time in hours (~4–10 range)
+        mid_sleep_h     – midpoint of the in-bed interval (noon-anchored)
+        time_in_bed_h   – total time in bed (hours)
+        sleep_hours     – actual sleep duration from the check-in (≤ TIB)
+        sleep_efficiency – sleep_hours / time_in_bed_h, clipped to [0, 1]
+        is_work_day     – True when work_hours > 0
+    """
+    cols = [c for c in ("date", "bed_time", "awake_time", "sleep_hours", "work_hours")
+            if c in checkin_df.columns]
+    df = checkin_df[cols].copy()
+
+    df = df[df["bed_time"].notna() & df["awake_time"].notna()]
+    df = df[df["bed_time"].astype(str).str.strip() != ""]
+    df = df[df["awake_time"].astype(str).str.strip() != ""]
+
+    def _parse_h(t) -> float:
+        """'HH:MM' or 'HH:MM:SS' → fractional hours; NaN on failure."""
+        try:
+            parts = str(t).strip().split(":")
+            return int(parts[0]) + int(parts[1]) / 60
+        except (ValueError, IndexError, TypeError):
+            return float("nan")
+
+    df = df.copy()
+    df["_bed_raw"] = df["bed_time"].map(_parse_h)
+    df["_wake_raw"] = df["awake_time"].map(_parse_h)
+    df = df[df["_bed_raw"].notna() & df["_wake_raw"].notna()].copy()
+
+    # Noon-anchor: post-midnight bedtimes (hour < 12) get +24h
+    df["bedtime_h"] = df["_bed_raw"].where(df["_bed_raw"] >= 12, df["_bed_raw"] + 24)
+    df["waketime_h"] = df["_wake_raw"]
+
+    df["time_in_bed_h"] = (df["waketime_h"] + 24) - df["bedtime_h"]
+    df["mid_sleep_h"] = df["bedtime_h"] + df["time_in_bed_h"] / 2
+
+    sh = df.get("sleep_hours", pd.Series(dtype=float))
+    df["sleep_efficiency"] = (sh / df["time_in_bed_h"]).clip(upper=1.0)
+    wh = df["work_hours"] if "work_hours" in df.columns else pd.Series(0, index=df.index)
+    df["is_work_day"] = wh.fillna(0) > 0
+
+    return df[[
+        "date", "bedtime_h", "waketime_h", "mid_sleep_h",
+        "time_in_bed_h", "sleep_hours", "sleep_efficiency", "is_work_day",
+    ]].reset_index(drop=True)
+
+
+def sleep_regularity_index(timing_df: pd.DataFrame, epoch_min: int = 5) -> float:
+    """Sleep Regularity Index (SRI): 0 (random) to 100 (perfectly regular).
+
+    For each pair of calendar-adjacent nights (date gap exactly 1 day), builds a
+    binary in-bed/out-of-bed vector at `epoch_min`-minute resolution over a fixed
+    noon-to-noon 24h window, then counts concordant epochs. Pairs where either
+    night is missing are skipped (not counted against regularity).
+
+        SRI = 100 * (2 * mean_concordance − 1)
+
+    0 corresponds to 50% concordance (pure random), 100 to 100% concordance
+    (identical schedule every night). Non-consecutive night pairs are excluded so
+    a missed logging day doesn't drag SRI down.
+
+    Caveat: the in-bed interval (bed_time → wake_time) is used as a proxy for
+    sleep — we don't have minute-level awakening data, so within-night
+    fragmentation is invisible to this metric.
+    """
+    if len(timing_df) < 2:
+        return float("nan")
+
+    epochs = (24 * 60) // epoch_min  # 288 for 5-min epochs
+
+    def _vec(row) -> np.ndarray:
+        v = np.zeros(epochs, dtype=np.int8)
+        # Offset from noon (epoch 0 = 12:00, epoch 1 = 12:05, ...)
+        bed_e = int((row["bedtime_h"] - 12) * 60 / epoch_min)
+        wake_e = int(((row["waketime_h"] + 24) - 12) * 60 / epoch_min)
+        b = max(0, min(bed_e, epochs - 1))
+        w = max(0, min(wake_e, epochs))
+        if b < w:
+            v[b:w] = 1
+        return v
+
+    df_s = timing_df.sort_values("date").reset_index(drop=True)
+    dates = pd.to_datetime(df_s["date"])
+    vecs = [_vec(row) for _, row in df_s.iterrows()]
+
+    concordances = []
+    for i in range(len(df_s) - 1):
+        if (dates.iloc[i + 1] - dates.iloc[i]).days == 1:
+            concordances.append(float((vecs[i] == vecs[i + 1]).mean()))
+
+    if not concordances:
+        return float("nan")
+
+    return float(100 * (2 * np.mean(concordances) - 1))
+
+
+def sleep_consistency_metrics(timing_df: pd.DataFrame) -> dict:
+    """Full sleep consistency metric bundle over a set of nights.
+
+    Keys match lib.constants.SLEEP_METRIC_LABELS plus 'n_nights'. Values are
+    floats (NaN when insufficient data). Timing/duration SDs are in minutes;
+    social jetlag in hours; efficiency in %.
+    """
+    n = len(timing_df)
+    nan = float("nan")
+    if n == 0:
+        return dict(sri=nan, social_jetlag=nan, sd_mid_sleep=nan,
+                    sd_bedtime=nan, sd_waketime=nan, sd_duration=nan,
+                    mean_efficiency=nan, sd_efficiency=nan, n_nights=0)
+
+    work = timing_df[timing_df["is_work_day"]]
+    free = timing_df[~timing_df["is_work_day"]]
+    if not work.empty and not free.empty:
+        social_jetlag = float(abs(free["mid_sleep_h"].mean() - work["mid_sleep_h"].mean()))
+    else:
+        social_jetlag = nan
+
+    h2m = 60  # hours → minutes
+    sd = lambda col: float(timing_df[col].std()) * h2m if n >= 2 else nan  # noqa: E731
+
+    return {
+        "sri":             sleep_regularity_index(timing_df),
+        "social_jetlag":   social_jetlag,
+        "sd_mid_sleep":    sd("mid_sleep_h"),
+        "sd_bedtime":      sd("bedtime_h"),
+        "sd_waketime":     sd("waketime_h"),
+        "sd_duration":     float(timing_df["sleep_hours"].std() * h2m) if n >= 2 else nan,
+        "mean_efficiency": float(timing_df["sleep_efficiency"].mean() * 100),
+        "sd_efficiency":   float(timing_df["sleep_efficiency"].std() * 100) if n >= 2 else nan,
+        "n_nights":        n,
+    }
+
+
 # ── Physique calculator formulas ─────────────────────────────────────────────
 # Ported 1:1 from data/body_measurement_calculators.xlsx (Calculators 1–6).
 def ffm(weight_kg: float, body_fat_pct: float) -> float:

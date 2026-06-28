@@ -53,7 +53,7 @@ _Locked choices, compressed to the "why." Don't re-litigate without a strong rea
 ## Backlog / Ideas
 _Unsorted. Check off in place when shipped, then move the line to CHANGE_LOG._
 
-- [ ] Sleep consistency metric
+- [x] Sleep consistency metric — Tab 5 (Sleep Consistency): SRI, social jetlag, SD bedtime/wake/mid-sleep/duration, mean efficiency; rolling line chart with intervention markers; Period A vs B comparison table.
 - [ ] Overreaching/undertraining detector
 - [ ] Go/no-go session predictor — logistic regression on morning check-in features; reuse
   Tab 2's `relative_e1rm` outcome and the standardized ridge factor weights as its starting

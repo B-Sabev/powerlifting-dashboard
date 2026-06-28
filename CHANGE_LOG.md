@@ -1,6 +1,8 @@
 ## Changelog
 _Append-only. One line per session, most recent on top._
 
+- 2026-06-27: Added Tab 5 "Sleep Consistency" — nightly schedule chart, rolling metrics (SRI, social jetlag, SD bedtime/wake/mid-sleep/duration, efficiency), Period A vs B comparison table; intervention markers from the check-in sheet's new `Intervention` column; noon-anchor fix for post-midnight bedtimes; 13 new tests.
+
 - 2026-06-27: Added "% of planned workout completed" metric to Tab 2 — hybrid model using
   Liftosaur history `target:` segments (resolves dynamic add-set logic) plus program-day
   Liftoscript lookup for entirely-skipped exercises; new `workout_completion` DB table; metric
