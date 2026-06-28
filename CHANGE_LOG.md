@@ -1,6 +1,7 @@
 ## Changelog
 _Append-only. One line per session, most recent on top._
 
+- 2026-06-28: Tab 3 TDEE now uses 5500–7700 kcal/kg dual-bound: maintenance and target intake shown as ranges; shaded bands on calorie chart; constants in `lib/constants.py`.
 - 2026-06-27: Added Tab 5 "Sleep Consistency" — nightly schedule chart, rolling metrics (SRI, social jetlag, SD bedtime/wake/mid-sleep/duration, efficiency), Period A vs B comparison table; intervention markers from the check-in sheet's new `Intervention` column; noon-anchor fix for post-midnight bedtimes; 13 new tests.
 
 - 2026-06-27: Added "% of planned workout completed" metric to Tab 2 — hybrid model using

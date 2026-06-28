@@ -16,7 +16,8 @@ _Locked choices, compressed to the "why." Don't re-litigate without a strong rea
   representative of normal eating/expenditure.
 - **TDEE bounds: 7700 kcal/kg fat, 5500 kcal/kg lean** (~2,500 kcal/lb to build muscle incl.
   synthesis inefficiency); rolling avg pre-seeded from full history. See
-  body-composition-analysis SKILL.md. (Tab 3 still uses a single 7700 both ways — see backlog.)
+  body-composition-analysis SKILL.md. Tab 3 now uses both bounds to show a maintenance
+  and target-intake range; constants live in `lib/constants.py` (`KCAL_PER_KG_FAT/LEAN`).
 - **Storage: SQLite for nutrition/measurements/training, CSV for check-in** — the first three
   are written by an unattended daily job, where a `UNIQUE(date)` upsert gives clean idempotent
   incremental writes; check-in stays a full-overwrite CSV because the Google Sheet already holds
@@ -60,8 +61,7 @@ _Unsorted. Check off in place when shipped, then move the line to CHANGE_LOG._
   point rather than refitting from scratch.
 - [ ] Combine body-measurement + FeelFit data to estimate lean-mass gain; add to Weight &
   Nutrition tab
-- [ ] Reconcile Tab 3 TDEE with the skill's dual-bound logic (dashboard uses a single 7700 both
-  ways — decide if the bound logic should apply or the point-estimate is intentional)
+- [x] Reconcile Tab 3 TDEE with the skill's dual-bound logic — now uses 5500–7700 kcal/kg range
 - [ ] Database backup strategy
 - [ ] README.md (missing — matters for portfolio review)
 - [ ] Publish the app online

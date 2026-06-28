@@ -86,6 +86,14 @@ NUCKOLS_COEF = {
     "Total":    (1448.53, 77.32),
 }
 
+# ── Tab 3 (Weight & Nutrition) TDEE bounds ───────────────────────────────────
+# kcal per kg of bodyweight change, used to back out maintenance from the
+# observed rate and to project target intake. Two physiological bounds give a
+# range: fat tissue (~7700 kcal/kg) vs lean-mass gain (~5500 kcal/kg, incl.
+# synthesis cost). See body-composition-analysis SKILL.md and PROJECT_LOG.md.
+KCAL_PER_KG_FAT = 7700
+KCAL_PER_KG_LEAN = 5500
+
 # ── Tab 5 (Sleep Consistency) ─────────────────────────────────────────────────
 # Ordered label → internal key map; governs display order in rolling-line
 # selectbox and comparison-table rows (SRI and Social Jetlag first per user pref).

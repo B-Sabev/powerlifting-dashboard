@@ -6,6 +6,8 @@ import pandas as pd
 import plotly.graph_objects as go
 import streamlit as st
 
+from lib.constants import KCAL_PER_KG_FAT, KCAL_PER_KG_LEAN
+
 
 def render(weight_df: pd.DataFrame | None, nutrition_df: pd.DataFrame | None) -> None:
     if weight_df is None:
@@ -107,9 +109,24 @@ def render(weight_df: pd.DataFrame | None, nutrition_df: pd.DataFrame | None) ->
 
     avg_cal = plot_data["Energy (kcal)"].mean()
     slope_kg_per_day = rate_actual / 7.0
-    maintenance = avg_cal - (slope_kg_per_day * 7700)
     target_kg_per_day = target_rate / 7.0
-    target_cal = maintenance + (target_kg_per_day * 7700)
+
+    def _scenario(kcal_per_kg: float) -> tuple[float, float]:
+        """Back-calculate maintenance and forward-project target intake for a
+        given kcal-per-kg-bodyweight-change assumption."""
+        maint = avg_cal - slope_kg_per_day * kcal_per_kg
+        target = maint + target_kg_per_day * kcal_per_kg
+        return maint, target
+
+    maint_fat,  target_fat  = _scenario(KCAL_PER_KG_FAT)
+    maint_lean, target_lean = _scenario(KCAL_PER_KG_LEAN)
+
+    # sort() handles sign-flip: on a cut (negative slope) the larger kcal/kg
+    # gives the *higher* maintenance estimate, so ordering isn't always fat→lean.
+    maint_low,  maint_high  = sorted((maint_fat,  maint_lean))
+    target_low, target_high = sorted((target_fat, target_lean))
+    maint_mid  = (maint_low  + maint_high)  / 2
+    target_mid = (target_low + target_high) / 2
 
     # ---- Weight over time (Plot) ----
     st.divider()
@@ -172,12 +189,20 @@ def render(weight_df: pd.DataFrame | None, nutrition_df: pd.DataFrame | None) ->
     with colC:
         st.metric("Avg daily intake", f"{avg_cal:.0f} kcal")
     with colD:
-        st.metric("Maintenance", f"{maintenance:.0f} kcal/day")
+        st.metric(
+            "Maintenance",
+            f"{maint_low:.0f}–{maint_high:.0f} kcal/day",
+            help=f"Range: lean-mass bound ({KCAL_PER_KG_LEAN} kcal/kg) → fat bound ({KCAL_PER_KG_FAT} kcal/kg)"
+        )
 
     colE, colF = st.columns(2)
     with colE:
-        st.metric("Target intake", f"{target_cal:.0f} kcal/day",
-                  delta=f"{target_cal - avg_cal:+.0f} from current")
+        st.metric(
+            "Target intake",
+            f"{target_low:.0f}–{target_high:.0f} kcal/day",
+            delta=f"{target_mid - avg_cal:+.0f} from current (midpoint)",
+            help=f"Range matches the maintenance bounds; delta uses midpoint ({target_mid:.0f} kcal/day)"
+        )
     with colF:
         st.metric("Rate period", f"{start_date.strftime('%d %b')} → {end_date.strftime('%d %b')}")
 
@@ -192,8 +217,18 @@ def render(weight_df: pd.DataFrame | None, nutrition_df: pd.DataFrame | None) ->
             marker=dict(color="#C44CE8", size=4, opacity=0.5),
             line=dict(width=1)
         ))
-        fig_cal.add_hline(y=maintenance, line_dash="dash", line_color="green", annotation_text="Maintenance")
-        fig_cal.add_hline(y=target_cal, line_dash="dot", line_color="red", annotation_text="Target")
+        fig_cal.add_hrect(
+            y0=maint_low, y1=maint_high,
+            fillcolor="green", opacity=0.12, line_width=0,
+            annotation_text=f"Maintenance ({maint_low:.0f}–{maint_high:.0f})",
+            annotation_position="top right",
+        )
+        fig_cal.add_hrect(
+            y0=target_low, y1=target_high,
+            fillcolor="red", opacity=0.12, line_width=0,
+            annotation_text=f"Target ({target_low:.0f}–{target_high:.0f})",
+            annotation_position="bottom right",
+        )
         fig_cal.update_layout(
             xaxis_title="Date",
             yaxis_title="Energy (kcal)",
