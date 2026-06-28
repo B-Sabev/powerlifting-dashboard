@@ -355,7 +355,7 @@ def render(checkin_df: pd.DataFrame | None) -> None:
             "Δ (B − A)": _fmt_delta(key, delta),
         })
 
-    st.dataframe(pd.DataFrame(rows), hide_index=True, use_container_width=True)
+    st.dataframe(pd.DataFrame(rows), hide_index=True, width='stretch')
     st.caption(
         "✅ = improvement · ⚠️ = worsening. "
         "**SRI** and **Mean Efficiency**: higher → better. "

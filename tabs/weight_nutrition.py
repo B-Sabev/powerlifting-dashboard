@@ -176,7 +176,7 @@ def render(weight_df: pd.DataFrame | None, nutrition_df: pd.DataFrame | None) ->
         height=480,
         margin=dict(l=40, r=20, t=10, b=40),
     )
-    st.plotly_chart(fig, use_container_width=True)
+    st.plotly_chart(fig, width='stretch')
 
     # ---- Progress Summary (Metrics) ----
     st.divider()
@@ -235,11 +235,14 @@ def render(weight_df: pd.DataFrame | None, nutrition_df: pd.DataFrame | None) ->
             height=300,
             margin=dict(l=40, r=20, t=10, b=40),
         )
-        st.plotly_chart(fig_cal, use_container_width=True)
+        st.plotly_chart(fig_cal, width='stretch')
 
     # ---- Show raw data table optionally ----
     with st.expander("View merged data"):
         st.dataframe(
-            plot_data[["date", "bodyweight", "rolling", "Energy (kcal)"]].round(2),
-            use_container_width=True
+            plot_data[["date", "bodyweight", "rolling", "Energy (kcal)"]].assign(
+                bodyweight=lambda d: d["bodyweight"].round(2),
+                rolling=lambda d: d["rolling"].round(2),
+            ),
+            width='stretch'
         )
