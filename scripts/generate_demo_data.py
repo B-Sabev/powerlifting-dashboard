@@ -408,8 +408,7 @@ def build_checkin() -> list[list]:
             work_load = 1
         else:
             work_hours = 8
-            work_load = max(1, min(10, round(rng.gauss(2.0, 0.8))))  # desk job → low end
-
+            work_load = max(1, min(10, round(rng.gauss(5.0, 1.2))))  
         session_quality = ""
         if is_training_day:
             session_quality = max(1, min(10, round(rng.gauss(7.5, 1.5))))
