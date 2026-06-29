@@ -1,7 +1,8 @@
 ## Changelog
 _Append-only. One line per session, most recent on top._
 
-- 2026-06-29: Replaced real personal data with synthetic demo data for public Streamlit Cloud deploy; real files now gitignored; history rewrite pending (see PROJECT_LOG).
+- 2026-06-29: Added automated daily backup of personal data files to private GitHub repo (`powerlifting-data-backup`) via `scripts/backup_data.sh` + SSH deploy key; wired into daily cron job.
+- 2026-06-29: Replaced real personal data with synthetic demo data for public Streamlit Cloud deploy; real files now gitignored; history rewritten with git filter-repo.
 - 2026-06-28: Tab 3 TDEE now uses 5500–7700 kcal/kg dual-bound: maintenance and target intake shown as ranges; shaded bands on calorie chart; constants in `lib/constants.py`.
 - 2026-06-27: Added Tab 5 "Sleep Consistency" — nightly schedule chart, rolling metrics (SRI, social jetlag, SD bedtime/wake/mid-sleep/duration, efficiency), Period A vs B comparison table; intervention markers from the check-in sheet's new `Intervention` column; noon-anchor fix for post-midnight bedtimes; 13 new tests.
 

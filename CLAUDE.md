@@ -48,6 +48,17 @@ linter or CI config in this repo.
 and `data/demo_daily_checkin.csv` when the real files are absent — this is what the public
 Streamlit Cloud app uses. Regenerate demo data with `scripts/generate_demo_data.py`.
 
+**Backups:** The two gitignored local-only files are backed up daily to a private GitHub repo
+(`B-Sabev/powerlifting-data-backup`, cloned at `~/Projects/powerlifting-data-backup`) via
+`scripts/backup_data.sh`, run as the last step of the daily cron job. Push uses the
+`github-pl-backup` SSH host alias in `~/.ssh/config` with a deploy key scoped to that repo
+only. Each day's sync produces one new commit if any data changed; no-op if unchanged.
+
+*Restore:* `git clone git@github-pl-backup:B-Sabev/powerlifting-data-backup.git` then copy
+`powerlifting.db` + `daily_checkin.csv` into `data/`. To roll back a corrupting sync:
+`cd ~/Projects/powerlifting-data-backup && git checkout <commit> -- powerlifting.db`
+then copy the file across.
+
 Four independent ingestion paths feed `data/powerlifting.db`, each with its own sync
 script under `scripts/`. The dashboard itself never writes to the DB — it only reads.
 
