@@ -403,8 +403,12 @@ def build_checkin() -> list[list]:
         life_stress = max(1, min(5, round(rng.gauss(2.5, 0.9))))
         motivation = max(1, min(10, round(rng.gauss(7.5, 1.5))))
 
-        work_load = max(1, min(5, round(rng.gauss(2.0, 0.8))))
-        work_hours = round(rng.gauss(8.0, 1.0), 1)
+        if d.weekday() >= 5:   # Saturday=5, Sunday=6
+            work_hours = 0
+            work_load = 1
+        else:
+            work_hours = 8
+            work_load = max(1, min(10, round(rng.gauss(2.0, 0.8))))  # desk job → low end
 
         session_quality = ""
         if is_training_day:
