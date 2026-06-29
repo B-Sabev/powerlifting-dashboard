@@ -43,6 +43,11 @@ linter or CI config in this repo.
 
 ## Data flow architecture
 
+**Real vs demo data:** `data/powerlifting.db` and `data/daily_checkin.csv` are gitignored
+(real personal data, local only). `lib/constants.py` falls back to `data/demo_powerlifting.db`
+and `data/demo_daily_checkin.csv` when the real files are absent — this is what the public
+Streamlit Cloud app uses. Regenerate demo data with `scripts/generate_demo_data.py`.
+
 Four independent ingestion paths feed `data/powerlifting.db`, each with its own sync
 script under `scripts/`. The dashboard itself never writes to the DB — it only reads.
 

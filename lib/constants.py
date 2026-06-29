@@ -10,12 +10,22 @@ from pathlib import Path
 # This file lives in lib/, so the project root (and its data/ folder) is two
 # levels up — resolve() before walking up so it works regardless of CWD.
 DATA_DIR = Path(__file__).resolve().parent.parent / "data"
-CHECKIN_PATH = DATA_DIR / "daily_checkin.csv"
+
+# Real files are gitignored and local-only. Demo files are committed for the public
+# Streamlit Cloud deployment. The existence check is the only config needed: local
+# dev finds the real files first; the cloud only has the demo files.
+_REAL_DB = DATA_DIR / "powerlifting.db"
+_DEMO_DB = DATA_DIR / "demo_powerlifting.db"
+DB_PATH  = _REAL_DB if _REAL_DB.exists() else _DEMO_DB
+
+_REAL_CHECKIN = DATA_DIR / "daily_checkin.csv"
+_DEMO_CHECKIN = DATA_DIR / "demo_daily_checkin.csv"
+CHECKIN_PATH  = _REAL_CHECKIN if _REAL_CHECKIN.exists() else _DEMO_CHECKIN
+
 # Training log, bodyweight, and nutrition all live in the SQLite warehouse, kept
 # up to date by scripts/sync_liftosaur_training_log.py, scripts/sync_liftosaur_body_measurements.py,
 # and scripts/sync_cronometer.py respectively (daily cron). Their raw exports
 # are those scripts' inputs, not something the dashboard reads directly.
-DB_PATH = DATA_DIR / "powerlifting.db"
 TRAINING_TABLE = "training_log"
 WORKOUT_COMPLETION_TABLE = "workout_completion"
 NUTRITION_TABLE = "cronometer_daily_nutrition"
