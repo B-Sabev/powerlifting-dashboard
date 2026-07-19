@@ -492,7 +492,7 @@ def main():
                 day_map, tmpl_map = parse_program_days(prog_text)
                 program_data[prog_name.lower()] = (day_map, tmpl_map)
             print(f"  Loaded {len(program_data)} program(s).")
-        except Exception as exc:
+        except (requests.RequestException, KeyError, ValueError) as exc:
             print(f"  [WARN] Could not load programs ({exc}); completion will use target: only.")
             program_data = None
 

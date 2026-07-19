@@ -9,6 +9,11 @@ set -euo pipefail
 SRC=/home/borislav/Projects/powerlifting-dashboard/data
 DEST=/home/borislav/Projects/powerlifting-data-backup
 
+if [ ! -d "$DEST/.git" ]; then
+    echo "backup_data.sh: ERROR - $DEST is not a git clone (missing .git). Clone the backup repo first: git clone git@github-pl-backup:B-Sabev/powerlifting-data-backup.git $DEST" >&2
+    exit 1
+fi
+
 cp "$SRC/powerlifting.db" "$SRC/daily_checkin.csv" "$DEST/"
 
 cd "$DEST"

@@ -103,6 +103,10 @@ ALL_COLUMNS = list(COLUMN_MAP.values())  # date first, completed last, matches d
 
 def build_schema_sql() -> str:
     """Generate the CREATE TABLE statement from COLUMN_MAP so the schema can't drift from the parser."""
+    # Column names here come from the static COLUMN_MAP above (hardcoded in this file, not
+    # derived from external/API input), so f-string interpolation into SQL is safe -- unlike
+    # the Liftosaur measurement-key case in sync_liftosaur_body_measurements.py, which
+    # validates keys before interpolating because they come from user-editable API data.
     cols_sql = ",\n        ".join(f"{col} REAL" for col in NUTRIENT_COLUMNS)
     return f"""
     CREATE TABLE IF NOT EXISTS {TABLE_NAME} (

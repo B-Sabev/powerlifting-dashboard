@@ -34,7 +34,7 @@ DEMO_CHECKIN = DATA_DIR / "demo_daily_checkin.csv"
 
 # ── Date range ───────────────────────────────────────────────────────────────
 START_DATE = date(2025, 9, 1)
-END_DATE   = date(2026, 6, 20)  # just before "today" on cloud
+END_DATE   = date.today() - timedelta(days=1)  # just before "today" on cloud
 
 DAYS = (END_DATE - START_DATE).days + 1
 ALL_DATES = [START_DATE + timedelta(days=i) for i in range(DAYS)]
