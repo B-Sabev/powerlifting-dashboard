@@ -27,7 +27,7 @@ def render(
 ) -> None:
     if latest_weight is None or latest_bf is None:
         st.info(
-            "👈 Sync weight and body-fat % via `scripts/sync_liftosaur_body_measurements.py` "
+            "Sync weight and body-fat % via `scripts/sync_liftosaur_body_measurements.py` "
             "to unlock these calculators."
         )
         st.stop()
@@ -74,7 +74,7 @@ def render(
 
     # ── Calculator 1 — FFMI ──────────────────────────────────────────────
     st.divider()
-    st.subheader("1. Fat-Free Mass Index (FFMI)")
+    st.subheader("1. Fat-free mass index (FFMI)")
     if weight > 0 and body_fat > 0:
         current_ffm = ffm(weight, body_fat)
         raw = ffmi_raw(current_ffm, HEIGHT_CM)
@@ -91,7 +91,7 @@ def render(
 
     # ── Calculator 2 — Target Body Composition Planner ───────────────────
     st.divider()
-    st.subheader("2. Target Body Composition Planner")
+    st.subheader("2. Target body composition planner")
     if current_ffm is not None and target_ffmi > 0 and target_bf > 0:
         target_ffm_val = target_ffm_for_ffmi(target_ffmi, HEIGHT_CM)
         target_weight = target_ffm_val / (1 - target_bf / 100)
@@ -116,7 +116,7 @@ def render(
 
     # ── Calculator 3 — Casey Butt Max Muscular Potential ─────────────────
     st.divider()
-    st.subheader("3. Maximum Muscular Potential (Casey Butt)")
+    st.subheader("3. Maximum muscular potential (Casey Butt)")
     if current_ffm is not None and target_bf > 0:
         max_ffm = casey_butt_max_ffm(HEIGHT_CM, WRIST_CM, ANKLE_CM, target_bf)
         max_total_weight = max_ffm / (1 - target_bf / 100)
@@ -142,9 +142,9 @@ def render(
         max_ffm = None
         max_total_weight = None
 
-    # ── Calculator 5 — Nuckols Efficiency ─────────────────────────────────
+    # ── Calculator 4 — Nuckols Efficiency ─────────────────────────────────
     st.divider()
-    st.subheader("4. Powerlifting Efficiency vs FFM Prediction (Nuckols)")
+    st.subheader("4. Powerlifting efficiency vs FFM prediction (Nuckols)")
     if current_ffm is not None:
         lifts = {"Squat": squat_1rm, "Bench": bench_1rm, "Deadlift": deadlift_1rm}
         total_1rm = sum(lifts.values())
@@ -179,9 +179,9 @@ def render(
     else:
         st.info("Enter weight and body fat % above.")
 
-    # ── Calculator 6 — Projected Lifts at Target & Max FFM ────────────────
+    # ── Calculator 5 — Projected Lifts at Target & Max FFM ────────────────
     st.divider()
-    st.subheader("5. Projected Lifts at Target & Maximum FFM (Nuckols)")
+    st.subheader("5. Projected lifts at target & maximum FFM (Nuckols)")
     if target_ffm_val is not None and max_ffm is not None:
         rows = []
         for lift_name in ["Squat", "Bench", "Deadlift", "Total"]:

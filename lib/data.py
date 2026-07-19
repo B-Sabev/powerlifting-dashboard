@@ -166,7 +166,7 @@ def build_totals_df(sets_df: pd.DataFrame, weight_df: pd.DataFrame) -> pd.DataFr
       - most recent squat session → heaviest set
       - most recent bench session → heaviest set
       - most recent deadlift session (conv or sumo, whichever heavier) → heaviest set
-    Sum to total, attach nearest bodyweight, compute Wilks + DOTS.
+    Sum to total, attach nearest bodyweight, compute DOTS.
     """
     session_max = sets_df.groupby(["date", "Exercise"])["weight_kg"].max().reset_index()
     training_days = sorted(session_max["date"].unique())

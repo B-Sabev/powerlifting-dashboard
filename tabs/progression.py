@@ -23,7 +23,7 @@ def render(session_df: pd.DataFrame, sets_df: pd.DataFrame, totals_df: pd.DataFr
             default=[e for e in SBD_EXERCISES if e in session_df["Exercise"].unique()],
         )
     with col_ctrl2:
-        show_trend = st.toggle("Show trend line", value=True)
+        show_trend = st.toggle("Show rolling average", value=True)
 
     # Date filter
     date_range = date_range_slider(session_df, "Date range", key="e1rm_date_range")
@@ -52,7 +52,7 @@ def render(session_df: pd.DataFrame, sets_df: pd.DataFrame, totals_df: pd.DataFr
             fig.add_trace(go.Scatter(
                 x=trend.index, y=trend.values.round(1),
                 mode="lines",
-                name=f"{ex} trend",
+                name=f"{ex} rolling average",
                 line=dict(color=color, width=2, dash="dot"),
                 hoverinfo="skip",
             ))
@@ -65,14 +65,11 @@ def render(session_df: pd.DataFrame, sets_df: pd.DataFrame, totals_df: pd.DataFr
     st.subheader("DOTS over time")
 
     if totals_df is not None and len(totals_df) > 0:
-        st.caption("DOTS (Dynamic Objective Team Scoring) is a " +
-                   "body weight adjusted scoring system for powerlifting. "
-                   "It uses the highest lifted squat, bench press, deadlift at a given weight, " + ""
+        st.caption("DOTS is a body weight adjusted scoring system for powerlifting. "
+                   "It uses the highest lifted squat, bench press, deadlift at a given weight, "
                    "plugged into a biological sex (male/female) specific formula, allowing for comparison of lifters of different body weights.")
 
-
-        with st.columns([2, 1])[0]:
-            show_score_trend = st.toggle("Show trend line", value=True, key="score_trend_toggle")
+        show_score_trend = st.toggle("Show rolling average", value=True, key="score_trend_toggle")
 
         # Date filter for score plot
         score_date_range = date_range_slider(totals_df, "Date range (scores)", key="score_date_slider")
@@ -95,12 +92,12 @@ def render(session_df: pd.DataFrame, sets_df: pd.DataFrame, totals_df: pd.DataFr
                 x=dots_trend.index,
                 y=dots_trend.values.round(1),
                 mode="lines",
-                name="DOTS trend",
+                name="DOTS rolling average",
                 line=dict(color=COLOR_DOTS, width=2, dash="dot"),
                 hoverinfo="skip",
             ))
 
-        apply_default_layout(fig_scores, xaxis_title="Date", yaxis_title="Competition Score")
+        apply_default_layout(fig_scores, xaxis_title="Date", yaxis_title="DOTS score")
         st.plotly_chart(fig_scores, width='stretch')
 
         # Display latest scores
@@ -114,20 +111,36 @@ def render(session_df: pd.DataFrame, sets_df: pd.DataFrame, totals_df: pd.DataFr
             with col3:
                 st.metric("DOTS", f"{latest['dots']:.1f}")
     else:
-        st.info("📦 Sync bodyweight via `scripts/sync_liftosaur_body_measurements.py` to see Wilks & DOTS scores over time.")
+        st.info("Sync bodyweight via `scripts/sync_liftosaur_body_measurements.py` to see DOTS scores over time.")
 
     # ── PRs table ────────────────────────────────────────────────────────────
-    st.subheader("All-time 1RM PRs")
+    st.subheader("All-time PRs")
     pr_rows = []
     for ex in SBD_EXERCISES:
-        sub = sets_df[sets_df["Exercise"] == ex]
-        if sub.empty:
+        e1rm_sub = session_df[session_df["Exercise"] == ex]
+        set_sub = sets_df[sets_df["Exercise"] == ex]
+        if e1rm_sub.empty and set_sub.empty:
             continue
-        best = sub[sub["weight_kg"] == sub["weight_kg"].max()].sort_values("date").iloc[0]
-        pr_rows.append({
-            "Exercise": ex,
-            "Weight (kg)": round(best["weight_kg"], 1),
-            "Date": best["date"].strftime("%d %b %Y"),
-        })
+
+        row = {"Exercise": ex}
+        if not e1rm_sub.empty:
+            best_e1rm = e1rm_sub.loc[e1rm_sub["e1rm"].idxmax()]
+            row["Best e1RM (kg)"] = round(best_e1rm["e1rm"], 1)
+            row["e1RM Date"] = best_e1rm["date"].strftime("%d %b %Y")
+        else:
+            row["Best e1RM (kg)"] = None
+            row["e1RM Date"] = "—"
+
+        if not set_sub.empty:
+            heaviest = set_sub[set_sub["weight_kg"] == set_sub["weight_kg"].max()].sort_values("date").iloc[0]
+            row["Heaviest Set (kg)"] = round(heaviest["weight_kg"], 1)
+            row["Reps"] = int(heaviest["Completed Reps"]) if pd.notna(heaviest["Completed Reps"]) else None
+            row["Set Date"] = heaviest["date"].strftime("%d %b %Y")
+        else:
+            row["Heaviest Set (kg)"] = None
+            row["Reps"] = None
+            row["Set Date"] = "—"
+
+        pr_rows.append(row)
     if pr_rows:
         st.dataframe(pd.DataFrame(pr_rows).set_index("Exercise"), width='stretch')

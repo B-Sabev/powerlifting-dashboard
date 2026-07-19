@@ -13,20 +13,20 @@ from lib.ui import apply_default_layout, date_range_slider, filter_by_range
 
 def render(weight_df: pd.DataFrame | None, nutrition_df: pd.DataFrame | None) -> None:
     if weight_df is None:
-        st.info("👈 Sync bodyweight via `scripts/sync_liftosaur_body_measurements.py` to see weight tracking.")
+        st.info("Sync bodyweight via `scripts/sync_liftosaur_body_measurements.py` to see weight tracking.")
         st.stop()
 
     if nutrition_df is None:
-        st.info("👈 Run `python scripts/sync_cronometer.py` to populate the nutrition database and unlock this tab.")
+        st.info("Run `python scripts/sync_cronometer.py` to populate the nutrition database and unlock this tab.")
         st.stop()
 
-    st.subheader("Weight & Nutrition Tracking")
+    st.subheader("Weight & nutrition tracking")
     st.caption("Track your bulk/cut progress by combining daily weight and calorie intake.")
 
     # Merge weight and nutrition on date (inner join keeps only days with both)
     merged = pd.merge(weight_df, nutrition_df, on="date", how="inner")
     if merged.empty:
-        st.warning("No overlapping dates between weight and nutrition data. Ensure both have entries on the same days.")
+        st.info("No overlapping dates between weight and nutrition data yet. Ensure both have entries on the same days.")
         st.stop()
 
     # ---- Date range slider ----
@@ -35,7 +35,7 @@ def render(weight_df: pd.DataFrame | None, nutrition_df: pd.DataFrame | None) ->
     plot_data = filter_by_range(merged, date_range[0], date_range[1]).sort_values("date").copy()
 
     if len(plot_data) < 3:
-        st.warning("Not enough days in the selected range. Pick a wider range.")
+        st.info("Not enough days in the selected range yet. Pick a wider range.")
         st.stop()
 
     # ---- User inputs for target rate and rolling window ----
@@ -84,7 +84,7 @@ def render(weight_df: pd.DataFrame | None, nutrition_df: pd.DataFrame | None) ->
 
     valid_rolling = range_data.dropna(subset=["rolling"])
     if len(valid_rolling) < 2:
-        st.warning(f"Not enough data to compute a {roll_window}-day rolling average. Try a smaller window or wider range.")
+        st.info(f"Not enough data yet to compute a {roll_window}-day rolling average. Try a smaller window or wider range.")
         st.stop()
 
     start_row = valid_rolling.iloc[0]
@@ -167,7 +167,7 @@ def render(weight_df: pd.DataFrame | None, nutrition_df: pd.DataFrame | None) ->
 
     # ---- Progress Summary (Metrics) ----
     st.divider()
-    st.subheader("Progress Summary")
+    st.subheader("Progress summary")
     colA, colB, colC, colD = st.columns(4)
     with colA:
         st.metric("Actual rate", f"{rate_actual:+.2f} kg/week", delta=f"{rate_actual - target_rate:+.2f} vs target")
@@ -228,8 +228,8 @@ def render(weight_df: pd.DataFrame | None, nutrition_df: pd.DataFrame | None) ->
     with st.expander("View merged data"):
         st.dataframe(
             plot_data[["date", "bodyweight", "rolling", "Energy (kcal)"]].assign(
-                bodyweight=lambda d: d["bodyweight"].round(2),
-                rolling=lambda d: d["rolling"].round(2),
+                bodyweight=lambda d: d["bodyweight"].round(1),
+                rolling=lambda d: d["rolling"].round(1),
             ),
             width='stretch'
         )

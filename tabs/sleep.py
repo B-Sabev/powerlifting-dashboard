@@ -89,7 +89,7 @@ def _add_intervention_vlines(fig: go.Figure, ivn_df: pd.DataFrame) -> None:
 
 def render(checkin_df: pd.DataFrame | None) -> None:
     if checkin_df is None:
-        st.info("👈 No check-in data found. Upload your daily check-in CSV to unlock this tab.")
+        st.info("No check-in data found. Upload your daily check-in CSV to unlock this tab.")
         st.stop()
 
     timing_df = sleep_timing(checkin_df)
@@ -328,7 +328,7 @@ def render(checkin_df: pd.DataFrame | None) -> None:
 
     n_a, n_b = m_a["n_nights"], m_b["n_nights"]
     if n_a == 0 or n_b == 0:
-        st.warning("One of the selected periods has no nights with bed/wake time logged. Adjust the date ranges.")
+        st.info("One of the selected periods has no nights with bed/wake time logged yet. Adjust the date ranges.")
         return
 
     rows = []

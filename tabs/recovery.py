@@ -29,7 +29,7 @@ def _rolling_series_to_df(series: pd.Series, col_name: str) -> pd.DataFrame:
 
 def render(session_df: pd.DataFrame, sets_df: pd.DataFrame, checkin_df: pd.DataFrame | None, completion_df: pd.DataFrame | None = None) -> None:
     if checkin_df is None:
-        st.info("👈 Upload your daily check-in CSV to unlock this tab.")
+        st.info("Upload your daily check-in CSV to unlock this tab.")
         st.stop()
 
     st.subheader("How recovery metrics relate to session quality")
@@ -111,7 +111,7 @@ def render(session_df: pd.DataFrame, sets_df: pd.DataFrame, checkin_df: pd.DataF
     plot_data = joined[[x_col, y_col, "date", "notes"]].dropna(subset=[x_col, y_col])
 
     if len(plot_data) < 3:
-        st.warning("Not enough overlapping data yet to plot. Keep logging! 📝")
+        st.info("Not enough overlapping data yet to plot. Keep logging!")
     else:
         r, p = spearmanr(plot_data[x_col], plot_data[y_col])
 
