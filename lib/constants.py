@@ -40,6 +40,25 @@ EXERCISE_COLORS = {
     "Sumo Deadlift": "#C44CE8",
 }
 
+# ── Shared semantic palette (charts across all tabs) ─────────────────────────
+# EXERCISE_COLORS above is per-lift; this is for everything else (rate lines,
+# maintenance/target bands, DOTS series, ...) so colors stay consistent and
+# don't silently collide with a lift's color (e.g. green meant "Deadlift",
+# "DOTS", and "good outcome" all at once before this existed).
+PALETTE = {
+    "blue":   "#4C9BE8",
+    "orange": "#E8844C",
+    "green":  "#4CE87A",
+    "red":    "#E8474C",
+    "purple": "#C44CE8",
+    "teal":   "#4CE8C4",
+}
+COLOR_POSITIVE = PALETTE["green"]
+COLOR_NEGATIVE = PALETTE["red"]
+COLOR_ACCENT = PALETTE["blue"]
+# DOTS gets its own color distinct from Deadlift (green) and Sumo (purple).
+COLOR_DOTS = PALETTE["teal"]
+
 # ── Daily check-in columns ───────────────────────────────────────────────────
 CHECKIN_COLS = [
     "date", "bed_time", "awake_time", "sleep_hours", "sleep_quality", "nap_hours",

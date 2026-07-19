@@ -28,6 +28,7 @@ import streamlit as st
 
 from lib.calculations import sleep_consistency_metrics, sleep_timing
 from lib.constants import SLEEP_METRIC_LABELS, SLEEP_ROLL_WINDOW
+from lib.ui import apply_default_layout, date_range_slider, filter_by_range
 
 
 # ── Formatting helpers ────────────────────────────────────────────────────────
@@ -134,20 +135,8 @@ def render(checkin_df: pd.DataFrame | None) -> None:
         tgt_bed_h += 24  # post-midnight target (e.g. 01:00 → 25.0)
 
     # Date-range slider to focus the chart window
-    sched_min_date = timing_df["date"].min().date()
-    sched_max_date = timing_df["date"].max().date()
-    sched_range = st.slider(
-        "Date range",
-        min_value=sched_min_date,
-        max_value=sched_max_date,
-        value=(sched_min_date, sched_max_date),
-        format="DD MMM",
-        key="sched_date_range",
-    )
-    sched_df = timing_df[
-        (timing_df["date"].dt.date >= sched_range[0]) &
-        (timing_df["date"].dt.date <= sched_range[1])
-    ]
+    sched_range = date_range_slider(timing_df, "Date range", key="sched_date_range")
+    sched_df = filter_by_range(timing_df, sched_range[0], sched_range[1])
 
     fig_sched = go.Figure()
 
@@ -204,7 +193,8 @@ def render(checkin_df: pd.DataFrame | None) -> None:
     )
 
     _add_intervention_vlines(fig_sched, ivn_df)
-    fig_sched.update_layout(
+    apply_default_layout(
+        fig_sched,
         yaxis=dict(
             title="Clock time",
             tickvals=_SCHED_TICK_VALS,
@@ -212,7 +202,6 @@ def render(checkin_df: pd.DataFrame | None) -> None:
         ),
         height=560,
         margin=dict(l=50, r=120, t=10, b=40),
-        legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="left", x=0),
     )
     st.plotly_chart(fig_sched, width="stretch")
 
@@ -331,8 +320,8 @@ def render(checkin_df: pd.DataFrame | None) -> None:
     a_start, a_end = pd.Timestamp(a_range[0]), pd.Timestamp(a_range[1])
     b_start, b_end = pd.Timestamp(b_range[0]), pd.Timestamp(b_range[1])
 
-    timing_a = timing_df[(timing_df["date"] >= a_start) & (timing_df["date"] <= a_end)]
-    timing_b = timing_df[(timing_df["date"] >= b_start) & (timing_df["date"] <= b_end)]
+    timing_a = filter_by_range(timing_df, a_start.date(), a_end.date())
+    timing_b = filter_by_range(timing_df, b_start.date(), b_end.date())
 
     m_a = sleep_consistency_metrics(timing_a)
     m_b = sleep_consistency_metrics(timing_b)

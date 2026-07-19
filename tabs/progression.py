@@ -5,7 +5,8 @@ import plotly.graph_objects as go
 import streamlit as st
 
 from lib.calculations import trend_line
-from lib.constants import EXERCISE_COLORS, SBD_EXERCISES
+from lib.constants import COLOR_DOTS, EXERCISE_COLORS, SBD_EXERCISES
+from lib.ui import apply_default_layout, date_range_slider, filter_by_range
 
 
 def render(session_df: pd.DataFrame, sets_df: pd.DataFrame, totals_df: pd.DataFrame | None) -> None:
@@ -25,21 +26,10 @@ def render(session_df: pd.DataFrame, sets_df: pd.DataFrame, totals_df: pd.DataFr
         show_trend = st.toggle("Show trend line", value=True)
 
     # Date filter
-    min_date = session_df["date"].min().date()
-    max_date = session_df["date"].max().date()
-    date_range = st.slider(
-        "Date range",
-        min_value=min_date,
-        max_value=max_date,
-        value=(min_date, max_date),
-        format="MMM YYYY",
+    date_range = date_range_slider(session_df, "Date range", key="e1rm_date_range")
+    filtered = filter_by_range(
+        session_df[session_df["Exercise"].isin(exercises_shown)], date_range[0], date_range[1]
     )
-
-    filtered = session_df[
-        session_df["Exercise"].isin(exercises_shown)
-        & (session_df["date"].dt.date >= date_range[0])
-        & (session_df["date"].dt.date <= date_range[1])
-    ]
 
     fig = go.Figure()
     for ex in exercises_shown:
@@ -67,14 +57,7 @@ def render(session_df: pd.DataFrame, sets_df: pd.DataFrame, totals_df: pd.DataFr
                 hoverinfo="skip",
             ))
 
-    fig.update_layout(
-        xaxis_title="Date",
-        yaxis_title="Estimated 1RM (kg)",
-        hovermode="x unified",
-        legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1),
-        height=480,
-        margin=dict(l=40, r=20, t=10, b=40),
-    )
+    apply_default_layout(fig, xaxis_title="Date", yaxis_title="Estimated 1RM (kg)")
     st.plotly_chart(fig, width='stretch')
 
     # ── DOTS over time ────────────────────────────────────────────────
@@ -92,32 +75,17 @@ def render(session_df: pd.DataFrame, sets_df: pd.DataFrame, totals_df: pd.DataFr
             show_score_trend = st.toggle("Show trend line", value=True, key="score_trend_toggle")
 
         # Date filter for score plot
-        score_min_date = totals_df["date"].min().date()
-        score_max_date = totals_df["date"].max().date()
-        score_date_range = st.slider(
-            "Date range (scores)",
-            min_value=score_min_date,
-            max_value=score_max_date,
-            value=(score_min_date, score_max_date),
-            format="MMM YYYY",
-            key="score_date_slider"
-        )
-
-        filtered_totals = totals_df[
-            (totals_df["date"].dt.date >= score_date_range[0])
-            & (totals_df["date"].dt.date <= score_date_range[1])
-        ].sort_values("date")
+        score_date_range = date_range_slider(totals_df, "Date range (scores)", key="score_date_slider")
+        filtered_totals = filter_by_range(totals_df, score_date_range[0], score_date_range[1]).sort_values("date")
 
         fig_scores = go.Figure()
-
-
 
         fig_scores.add_trace(go.Scatter(
             x=filtered_totals["date"],
             y=filtered_totals["dots"],
             mode="markers",
             name="DOTS",
-            marker=dict(color="#4CE87A", size=8, opacity=0.7),
+            marker=dict(color=COLOR_DOTS, size=8, opacity=0.7),
             hovertemplate="<b>DOTS</b><br>%{x|%d %b %Y}<br>Score: %{y:.1f}<extra></extra>",
         ))
 
@@ -128,18 +96,11 @@ def render(session_df: pd.DataFrame, sets_df: pd.DataFrame, totals_df: pd.DataFr
                 y=dots_trend.values.round(1),
                 mode="lines",
                 name="DOTS trend",
-                line=dict(color="#4CE87A", width=2, dash="dot"),
+                line=dict(color=COLOR_DOTS, width=2, dash="dot"),
                 hoverinfo="skip",
             ))
 
-        fig_scores.update_layout(
-            xaxis_title="Date",
-            yaxis_title="Competition Score",
-            hovermode="x unified",
-            legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1),
-            height=480,
-            margin=dict(l=40, r=20, t=10, b=40),
-        )
+        apply_default_layout(fig_scores, xaxis_title="Date", yaxis_title="Competition Score")
         st.plotly_chart(fig_scores, width='stretch')
 
         # Display latest scores

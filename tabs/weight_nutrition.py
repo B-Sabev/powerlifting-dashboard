@@ -6,7 +6,9 @@ import pandas as pd
 import plotly.graph_objects as go
 import streamlit as st
 
-from lib.constants import KCAL_PER_KG_FAT, KCAL_PER_KG_LEAN
+from lib.calculations import trend_line
+from lib.constants import KCAL_PER_KG_FAT, KCAL_PER_KG_LEAN, PALETTE
+from lib.ui import apply_default_layout, date_range_slider, filter_by_range
 
 
 def render(weight_df: pd.DataFrame | None, nutrition_df: pd.DataFrame | None) -> None:
@@ -28,19 +30,9 @@ def render(weight_df: pd.DataFrame | None, nutrition_df: pd.DataFrame | None) ->
         st.stop()
 
     # ---- Date range slider ----
-    min_date = merged["date"].min().date()
-    max_date = merged["date"].max().date()
-    date_range = st.slider(
-        "Date range",
-        min_value=min_date,
-        max_value=max_date,
-        value=(min_date, max_date),
-        format="YYYY-MM-DD",
-        key="weight_nutrition_date"
-    )
-    mask = (merged["date"].dt.date >= date_range[0]) & (merged["date"].dt.date <= date_range[1])
+    date_range = date_range_slider(merged, "Date range", key="weight_nutrition_date")
     full_merged = merged.sort_values("date").copy()
-    plot_data = merged.loc[mask].sort_values("date").copy()
+    plot_data = filter_by_range(merged, date_range[0], date_range[1]).sort_values("date").copy()
 
     if len(plot_data) < 3:
         st.warning("Not enough days in the selected range. Pick a wider range.")
@@ -83,10 +75,12 @@ def render(weight_df: pd.DataFrame | None, nutrition_df: pd.DataFrame | None) ->
         )
 
     # ---- Compute rolling average on the *full* dataset (to get values at range boundaries) ----
-    full_merged["rolling"] = full_merged["bodyweight"].rolling(window=roll_window, min_periods=1).mean()
+    rolling_series = trend_line(full_merged["date"], full_merged["bodyweight"], window=roll_window)
+    rolling_df = rolling_series.rename("rolling").rename_axis("date").reset_index()
+    rolling_df["date"] = pd.to_datetime(rolling_df["date"])
+    full_merged = full_merged.merge(rolling_df, on="date", how="left")
 
-    range_mask = (full_merged["date"].dt.date >= date_range[0]) & (full_merged["date"].dt.date <= date_range[1])
-    range_data = full_merged.loc[range_mask].copy()
+    range_data = filter_by_range(full_merged, date_range[0], date_range[1]).copy()
 
     valid_rolling = range_data.dropna(subset=["rolling"])
     if len(valid_rolling) < 2:
@@ -156,7 +150,7 @@ def render(weight_df: pd.DataFrame | None, nutrition_df: pd.DataFrame | None) ->
         y=[start_rolling, end_rolling],
         mode="markers",
         name="Rate start/end",
-        marker=dict(color="red", size=12, symbol="star"),
+        marker=dict(color=PALETTE["red"], size=12, symbol="star"),
         hovertemplate="%{x|%d %b %Y}<br>Rolling avg: %{y:.1f} kg<extra></extra>"
     ))
     fig.add_trace(go.Scatter(
@@ -164,18 +158,11 @@ def render(weight_df: pd.DataFrame | None, nutrition_df: pd.DataFrame | None) ->
         y=[start_rolling, end_rolling],
         mode="lines",
         name="Rate line",
-        line=dict(color="red", width=2, dash="dot"),
+        line=dict(color=PALETTE["red"], width=2, dash="dot"),
         hoverinfo="skip"
     ))
 
-    fig.update_layout(
-        xaxis_title="Date",
-        yaxis_title="Bodyweight (kg)",
-        hovermode="x unified",
-        legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1),
-        height=480,
-        margin=dict(l=40, r=20, t=10, b=40),
-    )
+    apply_default_layout(fig, xaxis_title="Date", yaxis_title="Bodyweight (kg)")
     st.plotly_chart(fig, width='stretch')
 
     # ---- Progress Summary (Metrics) ----
@@ -219,13 +206,13 @@ def render(weight_df: pd.DataFrame | None, nutrition_df: pd.DataFrame | None) ->
         ))
         fig_cal.add_hrect(
             y0=maint_low, y1=maint_high,
-            fillcolor="green", opacity=0.12, line_width=0,
+            fillcolor=PALETTE["green"], opacity=0.12, line_width=0,
             annotation_text=f"Maintenance ({maint_low:.0f}–{maint_high:.0f})",
             annotation_position="top right",
         )
         fig_cal.add_hrect(
             y0=target_low, y1=target_high,
-            fillcolor="red", opacity=0.12, line_width=0,
+            fillcolor=PALETTE["red"], opacity=0.12, line_width=0,
             annotation_text=f"Target ({target_low:.0f}–{target_high:.0f})",
             annotation_position="bottom right",
         )
