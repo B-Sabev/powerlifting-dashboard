@@ -53,6 +53,16 @@ def test_estimate_e1rm_six_plus_reps_returns_none():
     assert estimate_e1rm(row) is None
 
 
+def test_estimate_e1rm_nan_reps_returns_none():
+    row = {"Completed Reps": float("nan"), "weight_kg": 100.0, "Completed RPE": 9.0}
+    assert estimate_e1rm(row) is None
+
+
+def test_estimate_e1rm_nan_weight_returns_none():
+    row = {"Completed Reps": 1, "weight_kg": float("nan"), "Completed RPE": 9.0}
+    assert estimate_e1rm(row) is None
+
+
 # ── dots_score ────────────────────────────────────────────────────────────────
 def test_dots_score():
     assert dots_score(500.0, 80.0) == pytest.approx(344.6)

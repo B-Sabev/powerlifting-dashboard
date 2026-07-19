@@ -244,9 +244,7 @@ def render(checkin_df: pd.DataFrame | None) -> None:
         val = sleep_consistency_metrics(w_df)[metric_col]
         roll_rows.append({"date": timing_df.iloc[i]["date"], "value": val})
     roll_df = pd.DataFrame(roll_rows)
-    valid_roll = roll_df[roll_df["value"].notna() & roll_df["value"].apply(
-        lambda v: not math.isnan(v)
-    )]
+    valid_roll = roll_df[roll_df["value"].notna()]
 
     fig_roll = go.Figure()
     if not valid_roll.empty:

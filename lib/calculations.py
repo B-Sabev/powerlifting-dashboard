@@ -19,7 +19,12 @@ def estimate_e1rm(row) -> float | None:
     1 rep      -> RTS RPE table (defaults to RPE 9 if missing, snapped/clamped).
     2–5 reps   -> Epley: weight * (1 + reps/30).
     6+ reps    -> None (not reliable for estimating 1RM).
+
+    Returns None (rather than raising) if reps or weight is missing/NaN.
     """
+    if pd.isna(row["Completed Reps"]) or pd.isna(row["weight_kg"]):
+        return None
+
     reps = int(row["Completed Reps"])
     weight = row["weight_kg"]
     rpe = row["Completed RPE"]  # may be NaN

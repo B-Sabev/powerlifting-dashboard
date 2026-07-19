@@ -57,7 +57,9 @@ only. Each day's sync produces one new commit if any data changed; no-op if unch
 *Restore:* `git clone git@github-pl-backup:B-Sabev/powerlifting-data-backup.git` then copy
 `powerlifting.db` + `daily_checkin.csv` into `data/`. To roll back a corrupting sync:
 `cd ~/Projects/powerlifting-data-backup && git checkout <commit> -- powerlifting.db`
-then copy the file across.
+then copy the file across. (A one-off historical FeelFit weight import script,
+`scripts/add_historical_weight_data_to_db.py`, has been retired — that data already lives in
+the DB and the private backup repo above.)
 
 Four independent ingestion paths feed `data/powerlifting.db`, each with its own sync
 script under `scripts/`. The dashboard itself never writes to the DB — it only reads.

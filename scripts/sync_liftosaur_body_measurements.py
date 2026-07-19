@@ -48,6 +48,7 @@ LB_TO_KG = 0.453592
 IN_TO_CM = 2.54
 
 VALUE_RE = re.compile(r"^\s*([\d.]+)\s*([a-zA-Z%]+)\s*$")
+COLUMN_NAME_RE = re.compile(r"^[a-z][a-z0-9_]*$")
 
 
 def camel_to_snake(name: str) -> str:
@@ -204,6 +205,9 @@ def main():
     max_ts_per_key: dict = {}
     for key in keys:
         column, target_unit = column_for_key(key)
+        if not COLUMN_NAME_RE.match(column):
+            print(f"  [WARN] Derived column name '{column}' for key '{key}' is invalid -- skipping this key.")
+            continue
         since_ts = 0 if args.full else get_last_synced_ts(conn, key)
         print(f"-> Fetching '{key}' -> column '{column}' (since_ts={since_ts})")
         try:
