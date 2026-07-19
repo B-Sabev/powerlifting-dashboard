@@ -68,7 +68,10 @@ script under `scripts/`. The dashboard itself never writes to the DB — it only
    service) → CSV → `scripts/sync_cronometer.py` upserts into the
    `cronometer_daily_nutrition` table, keyed on `date`. Column names are derived from
    `COLUMN_MAP` in that script (Cronometer's raw headers → snake_case); if Cronometer
-   changes its export headers, update `COLUMN_MAP` there.
+   changes its export headers, update `COLUMN_MAP` there. The binary itself is a third-party
+   open-source tool ([`jrmycanady/cronometer-export`](https://github.com/jrmycanady/cronometer-export),
+   a Go CLI) — not committed to this repo (gitignored); build/download it separately and
+   place it at `scripts/cronometer-export` for the cron sync to find.
 2. **Body measurements** (weight, body fat %, and arbitrary length measurements like
    waist/chest/limbs) — Liftosaur API → `scripts/sync_liftosaur_body_measurements.py` →
    `daily_measurements` table. New measurement keys logged in the Liftosaur app appear as

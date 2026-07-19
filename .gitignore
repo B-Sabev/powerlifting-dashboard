@@ -1,6 +1,7 @@
 data/cronometer_daily_nutrition.csv
 data/powerlifting.db
 data/daily_checkin.csv
+scripts/cronometer-export
 
 
 # Byte-compiled / optimized / DLL files
