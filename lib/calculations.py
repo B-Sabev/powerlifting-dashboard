@@ -9,7 +9,16 @@ import numpy as np
 import pandas as pd
 import statsmodels.api as sm
 
-from lib.constants import RTS_TABLE, NUCKOLS_COEF
+from lib.constants import (
+    CASEY_BUTT_ANKLE_COEF,
+    CASEY_BUTT_BF_DIVISOR,
+    CASEY_BUTT_WRIST_COEF,
+    FFMI_NORM_COEF,
+    FFMI_REF_HEIGHT_M,
+    LB_TO_KG,
+    NUCKOLS_COEF,
+    RTS_TABLE,
+)
 
 
 # ── e1RM estimation ──────────────────────────────────────────────────────────
@@ -55,6 +64,55 @@ def trend_line(dates, values, window=4):
     return s.rolling(window, min_periods=1).mean()
 
 
+def compute_totals(sets_df: pd.DataFrame, weight_df: pd.DataFrame) -> pd.DataFrame:
+    """Current-snapshot SBD totals, one row per day a lift was trained.
+
+    For each such day, look up:
+      - most recent squat session → heaviest set
+      - most recent bench session → heaviest set
+      - most recent deadlift session (conv or sumo, whichever heavier) → heaviest set
+    Sum to total, attach nearest bodyweight, compute DOTS.
+    """
+    session_max = sets_df.groupby(["date", "Exercise"])["weight_kg"].max().reset_index()
+    training_days = sorted(session_max["date"].unique())
+
+    rows = []
+    for day in training_days:
+        def best_lift(exercise: str):
+            past = session_max[(session_max["Exercise"] == exercise) & (session_max["date"] <= day)]
+            if past.empty:
+                return None
+            return past[past["date"] == past["date"].max()]["weight_kg"].max()
+
+        squat = best_lift("Squat")
+        bench = best_lift("Bench Press")
+        conv  = best_lift("Deadlift")
+        sumo  = best_lift("Sumo Deadlift")
+        dl    = max(filter(None, [conv, sumo]), default=None)
+
+        if None in (squat, bench, dl):
+            continue  # haven't hit all 3 lifts yet
+
+        total = squat + bench + dl
+
+        bw_rows = weight_df[weight_df["date"] <= day]
+        if bw_rows.empty:
+            continue
+        bw = bw_rows.iloc[-1]["bodyweight"]
+
+        rows.append({
+            "date":       day,
+            "squat":      squat,
+            "bench":      bench,
+            "deadlift":   dl,
+            "total":      total,
+            "bodyweight": bw,
+            "dots":       dots_score(total, bw),
+        })
+
+    return pd.DataFrame(rows)
+
+
 # ── Recovery-tab performance/predictor features ──────────────────────────────
 def relative_e1rm(session_df: pd.DataFrame, window: int = 7, min_periods: int = 3) -> pd.Series:
     """Per-lift performance relative to that lift's own recent baseline: each
@@ -84,13 +142,18 @@ def acwr(dates, loads, acute_window: int = 7, chronic_window: int = 28, method: 
     load spike (elevated fatigue/injury risk); <0.8 = undertrained relative to
     recent baseline.
 
-    `loads` (e.g. daily Σ weight_kg * reps) is reindexed to one row per
-    calendar day between min/max date with 0 on untrained days, since rest
-    days are part of both the acute and chronic window, not gaps to skip.
+    `loads` (e.g. daily Σ weight_kg * reps) is first daily-aggregated (summed
+    per calendar day, in case of duplicate-date entries) then reindexed to one
+    row per calendar day between min/max date with 0 on untrained days, since
+    rest days are part of both the acute and chronic window, not gaps to skip.
     `method`: "ra" for rolling average (default) or "ewm" for exponentially
-    weighted (more sensitive to recent days). Returns a daily-indexed Series.
+    weighted (more sensitive to recent days). Returns a daily-indexed Series
+    (empty if `dates`/`loads` are empty).
     """
     s = pd.Series(np.asarray(loads, dtype=float), index=pd.to_datetime(dates)).sort_index()
+    if s.empty:
+        return s
+    s = s.groupby(level=0).sum()
     full_idx = pd.date_range(s.index.min(), s.index.max(), freq="D")
     s = s.reindex(full_idx, fill_value=0.0)
 
@@ -114,6 +177,9 @@ def ridge_standardized_coefs(X: pd.DataFrame, y: pd.Series, alpha: float = 1.0) 
     Rows with any NaN in X or y are dropped first — listwise deletion is
     correct here (a joint model needs every predictor for every row), unlike
     the pairwise-complete correlations used elsewhere in the recovery tab.
+    A predictor with zero variance over those rows can't be standardized
+    (0/0) and carries no signal either way, so it's excluded from the fit and
+    reported as a 0.0 coefficient rather than crashing the regression.
     Returns one coefficient per column of X (intercept dropped).
     """
     data = X.copy()
@@ -121,14 +187,18 @@ def ridge_standardized_coefs(X: pd.DataFrame, y: pd.Series, alpha: float = 1.0) 
     data = data.dropna()
 
     y_std = (data["__y__"] - data["__y__"].mean()) / data["__y__"].std(ddof=0)
-    X_std = (data[X.columns] - data[X.columns].mean()) / data[X.columns].std(ddof=0)
+
+    stds = data[X.columns].std(ddof=0)
+    varying_cols = stds[stds > 0].index.tolist()
+    X_std = (data[varying_cols] - data[varying_cols].mean()) / stds[varying_cols]
 
     design = sm.add_constant(X_std)
     model = sm.OLS(y_std, design).fit_regularized(alpha=alpha, L1_wt=0.0)
     # fit_regularized doesn't always preserve the pandas index on .params, so
     # rebuild it explicitly from the design matrix's columns.
     params = pd.Series(model.params, index=design.columns)
-    return params.drop("const")
+    coefs = params.drop("const")
+    return coefs.reindex(X.columns, fill_value=0.0)
 
 
 # ── Sleep consistency (Tab 5) ────────────────────────────────────────────────
@@ -184,7 +254,7 @@ def sleep_timing(checkin_df: pd.DataFrame) -> pd.DataFrame:
     df["mid_sleep_h"] = df["bedtime_h"] + df["time_in_bed_h"] / 2
 
     sh = df.get("sleep_hours", pd.Series(dtype=float))
-    df["sleep_efficiency"] = (sh / df["time_in_bed_h"]).clip(upper=1.0)
+    df["sleep_efficiency"] = (sh / df["time_in_bed_h"]).clip(lower=0.0, upper=1.0)
     wh = df["work_hours"] if "work_hours" in df.columns else pd.Series(0, index=df.index)
     df["is_work_day"] = wh.fillna(0) > 0
 
@@ -291,7 +361,7 @@ def ffmi_raw(ffm_kg: float, height_cm: float) -> float:
 
 
 def ffmi_normalized(ffm_kg: float, height_cm: float) -> float:
-    return ffmi_raw(ffm_kg, height_cm) + 6.1 * (1.8 - height_cm / 100)
+    return ffmi_raw(ffm_kg, height_cm) + FFMI_NORM_COEF * (FFMI_REF_HEIGHT_M - height_cm / 100)
 
 
 def ffmi_rating(norm_ffmi: float) -> str:
@@ -309,12 +379,17 @@ def ffmi_rating(norm_ffmi: float) -> str:
 
 
 def target_ffm_for_ffmi(target_ffmi: float, height_cm: float) -> float:
-    return (target_ffmi - 6.1 * (1.8 - height_cm / 100)) * (height_cm / 100) ** 2
+    return (target_ffmi - FFMI_NORM_COEF * (FFMI_REF_HEIGHT_M - height_cm / 100)) * (height_cm / 100) ** 2
 
 
 def casey_butt_max_ffm(height_cm: float, wrist_cm: float, ankle_cm: float, body_fat_pct: float) -> float:
     h_in, wrist_in, ankle_in = height_cm / 2.54, wrist_cm / 2.54, ankle_cm / 2.54
-    return (h_in ** 1.5) * (np.sqrt(wrist_in) / 22.667 + np.sqrt(ankle_in) / 17.0104) * (body_fat_pct / 224 + 1) * 0.453592
+    return (
+        (h_in ** 1.5)
+        * (np.sqrt(wrist_in) / CASEY_BUTT_WRIST_COEF + np.sqrt(ankle_in) / CASEY_BUTT_ANKLE_COEF)
+        * (body_fat_pct / CASEY_BUTT_BF_DIVISOR + 1)
+        * LB_TO_KG
+    )
 
 
 def nuckols_predicted(ffm_kg: float, height_cm: float, lift: str) -> float:

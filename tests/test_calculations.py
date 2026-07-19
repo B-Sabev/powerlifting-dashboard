@@ -13,6 +13,7 @@ import pytest
 from lib.calculations import (
     acwr,
     casey_butt_max_ffm,
+    compute_totals,
     dots_score,
     estimate_e1rm,
     ffm,
@@ -63,6 +64,24 @@ def test_estimate_e1rm_nan_weight_returns_none():
     assert estimate_e1rm(row) is None
 
 
+def test_estimate_e1rm_rpe_snaps_to_nearest_half():
+    row = {"Completed Reps": 1, "weight_kg": 100.0, "Completed RPE": 8.7}
+    # 8.7 snaps to 8.5 -> RTS_TABLE[(1, 8.5)] == 0.939
+    assert estimate_e1rm(row) == pytest.approx(106.49627263045794)
+
+
+def test_estimate_e1rm_rpe_clamps_above_ten():
+    row = {"Completed Reps": 1, "weight_kg": 100.0, "Completed RPE": 11.0}
+    # 11 clamps to 10 -> RTS_TABLE[(1, 10.0)] == 1.000
+    assert estimate_e1rm(row) == pytest.approx(100.0)
+
+
+def test_estimate_e1rm_rpe_clamps_below_seven():
+    row = {"Completed Reps": 1, "weight_kg": 100.0, "Completed RPE": 6.0}
+    # 6 clamps to 7 -> RTS_TABLE[(1, 7.0)] == 0.892
+    assert estimate_e1rm(row) == pytest.approx(112.10762331838565)
+
+
 # ── dots_score ────────────────────────────────────────────────────────────────
 def test_dots_score():
     assert dots_score(500.0, 80.0) == pytest.approx(344.6)
@@ -108,9 +127,17 @@ def test_casey_butt_max_ffm():
 
 
 # ── Nuckols prediction ────────────────────────────────────────────────────────
-def test_nuckols_predicted_squat():
-    # coef=611.19, intercept=-10.43 -> 611.19 * (70/175) + (-10.43)
-    assert nuckols_predicted(70.0, 175.0, "Squat") == pytest.approx(234.046)
+@pytest.mark.parametrize(
+    "lift, expected",
+    [
+        ("Squat", 234.046),        # 611.19 * (70/175) + (-10.43)
+        ("Bench Press", 156.106),  # 427.14 * (70/175) + (-14.75)
+        ("Deadlift", 266.58),      # 410.2  * (70/175) + 102.5
+        ("Total", 656.732),        # 1448.53 * (70/175) + 77.32
+    ],
+)
+def test_nuckols_predicted(lift, expected):
+    assert nuckols_predicted(70.0, 175.0, lift) == pytest.approx(expected)
 
 
 # ── relative_e1rm (Tab 2 outcome) ─────────────────────────────────────────────
@@ -162,6 +189,19 @@ def test_acwr_fills_untrained_days_with_zero():
     assert len(result) == 3  # Jan 1, 2, 3 — Jan 2 filled in
 
 
+def test_acwr_ewm_method():
+    dates = pd.date_range("2026-01-01", periods=5, freq="D")
+    loads = [10, 0, 0, 0, 0]
+    result = acwr(dates, loads, acute_window=2, chronic_window=4, method="ewm")
+    expected = [1.0, 0.5555555555555557, 0.30864197530864207, 0.17146776406035674, 0.09525986892242043]
+    assert result.to_list() == pytest.approx(expected)
+
+
+def test_acwr_empty_input_returns_empty_series():
+    result = acwr([], [])
+    assert len(result) == 0
+
+
 # ── ridge_standardized_coefs (Tab 2 multivariate view) ────────────────────────
 def test_ridge_standardized_coefs_favors_the_correlated_predictor():
     # x1 perfectly tracks y; x2 is shuffled/unrelated. The standardized ridge
@@ -175,6 +215,21 @@ def test_ridge_standardized_coefs_favors_the_correlated_predictor():
     assert coefs["x1"] == pytest.approx(0.4887280, abs=1e-5)
     assert coefs["x2"] == pytest.approx(0.0759158, abs=1e-5)
     assert coefs["x1"] > coefs["x2"]
+
+
+def test_ridge_standardized_coefs_zero_variance_predictor_no_crash():
+    # x2 is constant (zero variance) -> can't be standardized (0/0); must be
+    # excluded from the fit and reported as 0.0 rather than crashing.
+    X = pd.DataFrame({
+        "x1": [1, 2, 3, 4, 5, 6, 7, 8, 9, 10],
+        "x2": [5.0] * 10,
+    })
+    y = pd.Series([1, 2, 3, 4, 5, 6, 7, 8, 9, 10], dtype=float)
+    coefs = ridge_standardized_coefs(X, y, alpha=1.0)
+    assert list(coefs.index) == ["x1", "x2"]
+    assert coefs["x2"] == 0.0
+    assert not math.isnan(coefs["x1"])
+    assert coefs["x1"] > 0
 
 
 # ── sleep_timing ──────────────────────────────────────────────────────────────
@@ -379,3 +434,44 @@ def test_trend_line_rolling_sleep_alignment():
     assert rolling.to_list() == pytest.approx([8.0, 7.0, 6.5])
     # Index stays date-aligned so it can be merged back onto training days by date.
     assert list(rolling.index) == list(pd.to_datetime(["2026-01-01", "2026-01-02", "2026-01-03"]))
+
+
+# ── compute_totals (Tab 1 DOTS-over-time pure logic) ──────────────────────────
+def test_compute_totals_skips_days_before_all_three_lifts_hit():
+    sets_df = pd.DataFrame({
+        "date": pd.to_datetime([
+            "2026-01-01", "2026-01-02", "2026-01-03", "2026-01-04", "2026-01-05", "2026-01-06",
+        ]),
+        "Exercise": ["Squat", "Bench Press", "Deadlift", "Sumo Deadlift", "Squat", "Bench Press"],
+        "weight_kg": [100.0, 60.0, 140.0, 150.0, 110.0, 65.0],
+    })
+    weight_df = pd.DataFrame({
+        "date": pd.to_datetime(["2026-01-01"]),
+        "bodyweight": [80.0],
+    })
+    result = compute_totals(sets_df, weight_df)
+
+    # Jan 1/2 dropped: deadlift not yet trained.
+    assert result["date"].tolist() == list(pd.to_datetime(
+        ["2026-01-03", "2026-01-04", "2026-01-05", "2026-01-06"]
+    ))
+    assert result["squat"].tolist() == [100.0, 100.0, 110.0, 110.0]
+    assert result["bench"].tolist() == [60.0, 60.0, 60.0, 65.0]
+    # Deadlift = higher of conventional/sumo seen so far: 140 until sumo (150) overtakes it.
+    assert result["deadlift"].tolist() == [140.0, 150.0, 150.0, 150.0]
+    assert result["bodyweight"].tolist() == [80.0, 80.0, 80.0, 80.0]
+    assert result["total"].tolist() == pytest.approx([300.0, 310.0, 320.0, 325.0])
+    assert result["dots"].tolist() == pytest.approx(
+        [dots_score(t, 80.0) for t in [300.0, 310.0, 320.0, 325.0]]
+    )
+
+
+def test_compute_totals_no_bodyweight_returns_empty():
+    sets_df = pd.DataFrame({
+        "date": pd.to_datetime(["2026-01-01", "2026-01-01", "2026-01-01"]),
+        "Exercise": ["Squat", "Bench Press", "Deadlift"],
+        "weight_kg": [100.0, 60.0, 140.0],
+    })
+    weight_df = pd.DataFrame({"date": pd.to_datetime([]), "bodyweight": pd.Series(dtype=float)})
+    result = compute_totals(sets_df, weight_df)
+    assert result.empty

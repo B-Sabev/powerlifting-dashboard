@@ -71,6 +71,21 @@ _SCHED_TICK_VALS = [4, 5, 6, 7, 8, 9, 10, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27
 _SCHED_TICK_TEXT = [f"{int(h % 24):02d}:00" for h in _SCHED_TICK_VALS]
 
 
+@st.cache_data
+def _rolling_metric(timing_df: pd.DataFrame, metric_col: str, window: int) -> pd.DataFrame:
+    """sleep_consistency_metrics recomputed over every trailing `window`-night
+    slice of timing_df (one call per night — each redoes its own SRI/SD pass).
+    Cached per (metric_col, window) so re-renders triggered by unrelated
+    widgets don't redo it."""
+    roll_rows = []
+    for i in range(len(timing_df)):
+        start = max(0, i - window + 1)
+        w_df = timing_df.iloc[start : i + 1]
+        val = sleep_consistency_metrics(w_df)[metric_col]
+        roll_rows.append({"date": timing_df.iloc[i]["date"], "value": val})
+    return pd.DataFrame(roll_rows)
+
+
 def _add_intervention_vlines(fig: go.Figure, ivn_df: pd.DataFrame) -> None:
     """Overlay a dashed vertical line + annotation for each intervention."""
     for _, row in ivn_df.iterrows():
@@ -226,13 +241,7 @@ def render(checkin_df: pd.DataFrame | None) -> None:
     metric_col = SLEEP_METRIC_LABELS[metric_label]
 
     # Build rolling series — call sleep_consistency_metrics on each window slice
-    roll_rows = []
-    for i in range(len(timing_df)):
-        start = max(0, i - window + 1)
-        w_df = timing_df.iloc[start : i + 1]
-        val = sleep_consistency_metrics(w_df)[metric_col]
-        roll_rows.append({"date": timing_df.iloc[i]["date"], "value": val})
-    roll_df = pd.DataFrame(roll_rows)
+    roll_df = _rolling_metric(timing_df, metric_col, window)
     valid_roll = roll_df[roll_df["value"].notna()]
 
     fig_roll = go.Figure()

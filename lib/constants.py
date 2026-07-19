@@ -109,11 +109,23 @@ ANKLE_CM = 24.5
 # lift -> (coefficient, intercept) for Nuckols' FFM-based elite-level prediction:
 # predicted_lift = coef * (FFM / height_cm) + intercept
 NUCKOLS_COEF = {
-    "Squat":    (611.19, -10.43),
-    "Bench":    (427.14, -14.75),
-    "Deadlift": (410.2, 102.5),
-    "Total":    (1448.53, 77.32),
+    "Squat":       (611.19, -10.43),
+    "Bench Press": (427.14, -14.75),
+    "Deadlift":    (410.2, 102.5),
+    "Total":       (1448.53, 77.32),
 }
+
+# FFMI-normalization formula (McDonald "normalized FFMI"): raw FFMI adjusted to
+# a reference height, so FFMI is comparable across heights.
+FFMI_NORM_COEF = 6.1
+FFMI_REF_HEIGHT_M = 1.8
+
+# Casey Butt max-FFM formula constants (imperial-unit regression on wrist/ankle
+# circumference and body fat %); see lib.calculations.casey_butt_max_ffm.
+CASEY_BUTT_WRIST_COEF = 22.667
+CASEY_BUTT_ANKLE_COEF = 17.0104
+CASEY_BUTT_BF_DIVISOR = 224
+LB_TO_KG = 0.453592
 
 # ── Tab 3 (Weight & Nutrition) TDEE bounds ───────────────────────────────────
 # kcal per kg of bodyweight change, used to back out maintenance from the
@@ -140,14 +152,10 @@ SLEEP_METRIC_LABELS: dict[str, str] = {
 SLEEP_ROLL_WINDOW = 14
 
 # ── e1RM estimation ──────────────────────────────────────────────────────────
-# RTS RPE table: (reps, RPE) -> fraction of 1RM
+# RTS RPE table, singles only: (1, RPE) -> fraction of 1RM. estimate_e1rm only
+# ever looks up reps == 1 (2–5 reps use Epley instead), so the reps-2/3/4 rows
+# the RTS table also publishes are dead weight here.
 RTS_TABLE = {
     (1, 10.0): 1.000, (1, 9.5): 0.978, (1, 9.0): 0.955, (1, 8.5): 0.939,
     (1,  8.0): 0.922, (1, 7.5): 0.907, (1, 7.0): 0.892,
-    (2, 10.0): 0.955, (2, 9.5): 0.939, (2, 9.0): 0.922, (2, 8.5): 0.907,
-    (2,  8.0): 0.892, (2, 7.5): 0.878, (2, 7.0): 0.863,
-    (3, 10.0): 0.922, (3, 9.5): 0.907, (3, 9.0): 0.892, (3, 8.5): 0.878,
-    (3,  8.0): 0.863, (3, 7.5): 0.849, (3, 7.0): 0.835,
-    (4, 10.0): 0.892, (4, 9.5): 0.878, (4, 9.0): 0.863, (4, 8.5): 0.849,
-    (4,  8.0): 0.835, (4, 7.5): 0.820, (4, 7.0): 0.807,
 }

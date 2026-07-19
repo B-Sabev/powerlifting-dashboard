@@ -141,9 +141,9 @@ wiring) — it used to be a ~1,000-line monolith; the actual logic was split out
   `data/daily_checkin.csv` directly).
   The DB-backed loaders rename SQL columns back to the dashboard's original display-column
   names at load time (e.g. `exercise` → `"Exercise"`, `reps` → `"Completed Reps"`) so the
-  `tabs/` modules are unaffected by the underlying storage. Because these are
-  `@st.cache_data`-cached, after re-syncing the DB you must clear Streamlit's cache (rerun
-  from the app menu, or restart) to see new data.
+  `tabs/` modules are unaffected by the underlying storage. Each loader is `@st.cache_data(ttl=3600)`,
+  so a running app picks up a re-synced DB within an hour on its own; to see new data
+  immediately, clear Streamlit's cache (rerun from the app menu, or restart).
 - **`tabs/`** — one module per tab, each exposing a single `render(...)` function called from
   `powerlifting_dashboard.py` inside its `with tabN:` block. Each independently gated on its
   data being available (falls back to an `st.info`/`st.stop()` placeholder rather than

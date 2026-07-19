@@ -27,13 +27,18 @@ def _rolling_series_to_df(series: pd.Series, col_name: str) -> pd.DataFrame:
     return series.rename_axis("date").reset_index(name=col_name)
 
 
-def render(session_df: pd.DataFrame, sets_df: pd.DataFrame, checkin_df: pd.DataFrame | None, completion_df: pd.DataFrame | None = None) -> None:
-    if checkin_df is None:
-        st.info("Upload your daily check-in CSV to unlock this tab.")
-        st.stop()
-
-    st.subheader("How recovery metrics relate to session quality")
-
+@st.cache_data
+def _build_joined(
+    session_df: pd.DataFrame,
+    sets_df: pd.DataFrame,
+    checkin_df: pd.DataFrame,
+    completion_df: pd.DataFrame | None,
+) -> pd.DataFrame:
+    """Feature-engineering pipeline: relative-e1RM outcome + rolling-sleep/ACWR/
+    workout-completion predictors, joined onto check-in training days with
+    session quality logged. Cached so flipping the X/Y selectboxes below (which
+    only change which already-computed columns get read) doesn't redo this join
+    on every rerun."""
     # ── Outcome: per-lift relative e1RM ─────────────────────────────────────
     # Raw e1RM is dominated by *which* lift was trained that day (a deadlift
     # e1RM dwarfs a bench e1RM) and drifts upward over a training cycle.
@@ -71,7 +76,17 @@ def render(session_df: pd.DataFrame, sets_df: pd.DataFrame, checkin_df: pd.DataF
         joined = joined.merge(completion_df, on="date", how="left")
     else:
         joined["pct_planned_completed"] = float("nan")
-    joined = joined[joined["session_quality"].notna()]
+    return joined[joined["session_quality"].notna()]
+
+
+def render(session_df: pd.DataFrame, sets_df: pd.DataFrame, checkin_df: pd.DataFrame | None, completion_df: pd.DataFrame | None = None) -> None:
+    if checkin_df is None:
+        st.info("Upload your daily check-in CSV to unlock this tab.")
+        st.stop()
+
+    st.subheader("How recovery metrics relate to session quality")
+
+    joined = _build_joined(session_df, sets_df, checkin_df, completion_df)
 
     st.caption(
         f"Based on {len(joined)} training days with check-in and session quality logged."

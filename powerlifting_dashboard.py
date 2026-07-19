@@ -49,12 +49,12 @@ if session_df.empty:
     st.error("No training data found in the database. Run `python scripts/sync_liftosaur_training_log.py` to sync from Liftosaur.")
     st.stop()
 checkin_df = load_checkin(CHECKIN_PATH) if CHECKIN_PATH.exists() else None
-weight_df = load_weight(DB_PATH) if DB_PATH.exists() else None
-if weight_df is not None and weight_df.empty:
+weight_df = load_weight(DB_PATH)
+if weight_df.empty:
     weight_df = None
-nutrition_df = load_nutrition(DB_PATH) if DB_PATH.exists() else None
-completion_df = load_workout_completion(DB_PATH) if DB_PATH.exists() else None
-totals_df = build_totals_df(sets_df, weight_df) if weight_df is not None and sets_df is not None else None
+nutrition_df = load_nutrition(DB_PATH)
+completion_df = load_workout_completion(DB_PATH)
+totals_df = build_totals_df(sets_df, weight_df) if weight_df is not None else None
 latest_weight, latest_weight_date, latest_bf, latest_bf_date = load_latest_measurements(DB_PATH)
 
 # ── Tab layout ────────────────────────────────────────────────────────────────

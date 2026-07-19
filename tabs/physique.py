@@ -146,7 +146,7 @@ def render(
     st.divider()
     st.subheader("4. Powerlifting efficiency vs FFM prediction (Nuckols)")
     if current_ffm is not None:
-        lifts = {"Squat": squat_1rm, "Bench": bench_1rm, "Deadlift": deadlift_1rm}
+        lifts = {"Squat": squat_1rm, "Bench Press": bench_1rm, "Deadlift": deadlift_1rm}
         total_1rm = sum(lifts.values())
         rows = []
         for lift_name, your_1rm in {**lifts, "Total": total_1rm}.items():
@@ -184,7 +184,7 @@ def render(
     st.subheader("5. Projected lifts at target & maximum FFM (Nuckols)")
     if target_ffm_val is not None and max_ffm is not None:
         rows = []
-        for lift_name in ["Squat", "Bench", "Deadlift", "Total"]:
+        for lift_name in ["Squat", "Bench Press", "Deadlift", "Total"]:
             rows.append({
                 "Lift": lift_name,
                 "At Target FFM (Calc 2)": round(nuckols_predicted(target_ffm_val, HEIGHT_CM, lift_name), 1),
