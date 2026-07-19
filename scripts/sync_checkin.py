@@ -30,7 +30,9 @@ import requests
 
 DATA_DIR = Path(__file__).parent.parent / "data"
 DEFAULT_OUT_PATH = DATA_DIR / "daily_checkin.csv"
-EXPORT_URL_TEMPLATE = "https://docs.google.com/spreadsheets/d/{sheet_id}/export?format=csv&gid={gid}"
+EXPORT_URL_TEMPLATE = (
+    "https://docs.google.com/spreadsheets/d/{sheet_id}/export?format=csv&gid={gid}"
+)
 
 
 def fetch_csv(sheet_id: str, gid: str) -> bytes:
@@ -53,7 +55,9 @@ def fetch_csv(sheet_id: str, gid: str) -> bytes:
 
 
 def main():
-    parser = argparse.ArgumentParser(description="Sync the daily check-in Google Sheet into data/daily_checkin.csv.")
+    parser = argparse.ArgumentParser(
+        description="Sync the daily check-in Google Sheet into data/daily_checkin.csv."
+    )
     parser.add_argument(
         "--sheet-id",
         default=os.environ.get("GOOGLE_SHEET_ID"),
@@ -64,7 +68,9 @@ def main():
         default=os.environ.get("GOOGLE_SHEET_GID", "0"),
         help="Tab ID (the number after #gid= in the URL). Defaults to 0 (first tab).",
     )
-    parser.add_argument("--out", type=Path, default=DEFAULT_OUT_PATH, help="Where to write the CSV.")
+    parser.add_argument(
+        "--out", type=Path, default=DEFAULT_OUT_PATH, help="Where to write the CSV."
+    )
     args = parser.parse_args()
 
     if not args.sheet_id:

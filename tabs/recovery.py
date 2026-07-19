@@ -55,20 +55,27 @@ def _build_joined(
     # just training days) so each training day picks up the days off too.
     rolling_sleep = None
     for col, window in ROLLING_SLEEP_WINDOWS.items():
-        roll = _rolling_series_to_df(trend_line(checkin_df["date"], checkin_df["sleep_hours"], window=window), col)
-        rolling_sleep = roll if rolling_sleep is None else rolling_sleep.merge(roll, on="date", how="outer")
+        roll = _rolling_series_to_df(
+            trend_line(checkin_df["date"], checkin_df["sleep_hours"], window=window), col
+        )
+        rolling_sleep = (
+            roll if rolling_sleep is None else rolling_sleep.merge(roll, on="date", how="outer")
+        )
 
     # ACWR (acute:chronic workload ratio) from daily training tonnage.
     daily_load = (sets_df["weight_kg"] * sets_df["Completed Reps"]).groupby(sets_df["date"]).sum()
     acwr_df = _rolling_series_to_df(
-        acwr(daily_load.index, daily_load.to_numpy(), ACWR_ACUTE_WINDOW, ACWR_CHRONIC_WINDOW), "acwr"
+        acwr(daily_load.index, daily_load.to_numpy(), ACWR_ACUTE_WINDOW, ACWR_CHRONIC_WINDOW),
+        "acwr",
     )
 
     # ── Join: check-in training days + outcome + engineered predictors ──────
-    training_days = checkin_df[checkin_df["trained_today"] == True].copy()
+    # Explicit `== True` (not plain truthiness) is intentional: trained_today is
+    # object-dtype (map() can leave NaN for unmapped values), and a bare boolean mask
+    # would raise on NaN rather than treat it as falsy the way `== True` does.
+    training_days = checkin_df[checkin_df["trained_today"] == True].copy()  # noqa: E712
     joined = (
-        training_days
-        .merge(daily_relative, on="date", how="left")
+        training_days.merge(daily_relative, on="date", how="left")
         .merge(rolling_sleep, on="date", how="left")
         .merge(acwr_df, on="date", how="left")
     )
@@ -79,7 +86,12 @@ def _build_joined(
     return joined[joined["session_quality"].notna()]
 
 
-def render(session_df: pd.DataFrame, sets_df: pd.DataFrame, checkin_df: pd.DataFrame | None, completion_df: pd.DataFrame | None = None) -> None:
+def render(
+    session_df: pd.DataFrame,
+    sets_df: pd.DataFrame,
+    checkin_df: pd.DataFrame | None,
+    completion_df: pd.DataFrame | None = None,
+) -> None:
     if checkin_df is None:
         st.info("Upload your daily check-in CSV to unlock this tab.")
         st.stop()
@@ -98,8 +110,8 @@ def render(session_df: pd.DataFrame, sets_df: pd.DataFrame, checkin_df: pd.DataF
 
     # ── Selectors ───────────────────────────────────────────────────────────
     OUTCOMES = {
-        "Relative e1RM":        "relative_e1rm",
-        "Session Quality":      "session_quality",
+        "Relative e1RM": "relative_e1rm",
+        "Session Quality": "session_quality",
         "Workout Completion %": "pct_planned_completed",
     }
     col_a, col_b = st.columns(2)
@@ -149,12 +161,13 @@ def render(session_df: pd.DataFrame, sets_df: pd.DataFrame, checkin_df: pd.DataF
             height=420,
             margin=dict(l=40, r=20, t=10, b=40),
         )
-        st.plotly_chart(fig2, width='stretch')
+        st.plotly_chart(fig2, width="stretch")
 
         direction = "positive" if r > 0 else "negative"
         strength = "strong" if abs(r) > 0.5 else "moderate" if abs(r) > 0.3 else "weak"
         st.metric(
-            "Spearman r", f"{r:.2f}",
+            "Spearman r",
+            f"{r:.2f}",
             help=f"{strength.capitalize()} {direction} correlation (n={len(plot_data)}, p={p:.3f})",
         )
 
@@ -173,20 +186,22 @@ def render(session_df: pd.DataFrame, sets_df: pd.DataFrame, checkin_df: pd.DataF
         corr_matrix = corr_data.corr(method="spearman")
         outcome_corr = corr_matrix[y_col].drop(y_col).dropna().sort_values()
 
-        fig3 = go.Figure(go.Bar(
-            x=outcome_corr.values.round(2),
-            y=[label_by_col[c] for c in outcome_corr.index],
-            orientation="h",
-            marker_color=["#E8474C" if v < 0 else "#4CE87A" for v in outcome_corr.values],
-            text=[f"{v:.2f}" for v in outcome_corr.values.round(2)],
-            textposition="outside",
-        ))
+        fig3 = go.Figure(
+            go.Bar(
+                x=outcome_corr.values.round(2),
+                y=[label_by_col[c] for c in outcome_corr.index],
+                orientation="h",
+                marker_color=["#E8474C" if v < 0 else "#4CE87A" for v in outcome_corr.values],
+                text=[f"{v:.2f}" for v in outcome_corr.values.round(2)],
+                textposition="outside",
+            )
+        )
         fig3.update_layout(
             xaxis=dict(title=f"Spearman r with {y_var_label}", range=[-1.1, 1.1]),
             height=400,
             margin=dict(l=10, r=60, t=10, b=40),
         )
-        st.plotly_chart(fig3, width='stretch')
+        st.plotly_chart(fig3, width="stretch")
         st.caption("Green = higher value → better outcome. Red = higher value → worse outcome.")
     else:
         st.info("Need at least 5 training days with this outcome logged for the heatmap.")
@@ -207,21 +222,26 @@ def render(session_df: pd.DataFrame, sets_df: pd.DataFrame, checkin_df: pd.DataF
     if len(complete_rows) >= 10:
         coefs = ridge_standardized_coefs(X, joined[y_col], alpha=RIDGE_ALPHA).sort_values()
 
-        fig4 = go.Figure(go.Bar(
-            x=coefs.values.round(2),
-            y=[label_by_col[c] for c in coefs.index],
-            orientation="h",
-            marker_color=["#E8474C" if v < 0 else "#4CE87A" for v in coefs.values],
-            text=[f"{v:.2f}" for v in coefs.values.round(2)],
-            textposition="outside",
-        ))
+        fig4 = go.Figure(
+            go.Bar(
+                x=coefs.values.round(2),
+                y=[label_by_col[c] for c in coefs.index],
+                orientation="h",
+                marker_color=["#E8474C" if v < 0 else "#4CE87A" for v in coefs.values],
+                text=[f"{v:.2f}" for v in coefs.values.round(2)],
+                textposition="outside",
+            )
+        )
         fig4.update_layout(
             xaxis=dict(title="Standardized ridge coefficient"),
             height=400,
             margin=dict(l=10, r=60, t=10, b=40),
         )
-        st.plotly_chart(fig4, width='stretch')
-        st.caption(f"Fit on {len(complete_rows)} days with every predictor logged (listwise — a joint model needs all of them per row).")
+        st.plotly_chart(fig4, width="stretch")
+        st.caption(
+            f"Fit on {len(complete_rows)} days with every predictor logged (listwise — "
+            "a joint model needs all of them per row)."
+        )
     else:
         st.info(
             f"Need at least 10 training days with *every* predictor logged for the ridge "

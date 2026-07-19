@@ -76,7 +76,7 @@ import argparse
 import os
 import re
 import sqlite3
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
 
 import requests
@@ -134,7 +134,9 @@ def fetch_history_since(since_id: int) -> list[dict]:
     cursor = None
     while True:
         params = {"cursor": cursor} if cursor else {}
-        resp = requests.get(f"{BASE_URL}/history", headers=_auth_headers(), params=params, timeout=15)
+        resp = requests.get(
+            f"{BASE_URL}/history", headers=_auth_headers(), params=params, timeout=15
+        )
         resp.raise_for_status()
         payload = resp.json().get("data", {})
         page = payload.get("records", [])
@@ -268,7 +270,7 @@ def _parse_header_date(text: str) -> str | None:
         return None
     date_part, time_part, offset = match.groups()
     dt = datetime.fromisoformat(f"{date_part}T{time_part}{offset}")
-    return dt.astimezone(timezone.utc).date().isoformat()
+    return dt.astimezone(UTC).date().isoformat()
 
 
 def _parse_completed_sets(segment: str) -> list[tuple[int, float, float | None]]:
@@ -276,7 +278,9 @@ def _parse_completed_sets(segment: str) -> list[tuple[int, float, float | None]]
     rows = []
     for count, reps, weight, unit, rpe in SET_TOKEN_RE.findall(segment):
         if reps == "0":
-            continue  # failed attempt (0 completed reps) -- not a real set, matches dashboard's Completed Reps > 0 filter
+            # failed attempt (0 completed reps) -- not a real set, matches dashboard's
+            # Completed Reps > 0 filter
+            continue
         weight_kg = float(weight) * LB_TO_KG if unit == "lb" else float(weight)
         rpe_val = float(rpe) if rpe else None
         rows.extend([(int(reps), weight_kg, rpe_val)] * int(count))
@@ -347,7 +351,7 @@ def parse_workout_completion(
         if not exercise_name or ":" in exercise_name:
             continue
 
-        rest = stripped[len(exercise_name) + 3:]  # everything after "Name / "
+        rest = stripped[len(exercise_name) + 3 :]  # everything after "Name / "
         completed_segment = re.split(r" / (?:warmup|target):", rest, maxsplit=1)[0]
         target_match = re.search(r" / target: (.+)$", rest)
         target_segment = target_match.group(1).strip() if target_match else ""
@@ -390,13 +394,15 @@ def parse_workout(record: dict) -> tuple[str, list[dict]] | None:
         for exercise in SBD_EXERCISES:
             if not line.startswith(f"{exercise} / "):
                 continue
-            rest = line[len(exercise) + 3:]
+            rest = line[len(exercise) + 3 :]
             # Completed sets are always the first segment, before an optional
             # "warmup:"/"target:" marker (whichever appears first). Warmup sets
             # are deliberately not parsed/stored -- see module docstring.
             completed_segment = re.split(r" / (?:warmup|target):", rest, maxsplit=1)[0]
             for reps, weight_kg, rpe in _parse_completed_sets(completed_segment):
-                rows.append({"exercise": exercise, "reps": reps, "weight_kg": weight_kg, "rpe": rpe})
+                rows.append(
+                    {"exercise": exercise, "reps": reps, "weight_kg": weight_kg, "rpe": rpe}
+                )
             break
 
     if not rows:
@@ -416,9 +422,14 @@ def ensure_schema(conn: sqlite3.Connection) -> None:
             rpe        REAL
         )
     """)
-    conn.execute(f"CREATE INDEX IF NOT EXISTS idx_{TABLE_NAME}_workout_id ON {TABLE_NAME}(workout_id)")
+    conn.execute(
+        f"CREATE INDEX IF NOT EXISTS idx_{TABLE_NAME}_workout_id ON {TABLE_NAME}(workout_id)"
+    )
     conn.execute(f"CREATE INDEX IF NOT EXISTS idx_{TABLE_NAME}_date ON {TABLE_NAME}(date)")
-    conn.execute(f"CREATE TABLE IF NOT EXISTS {STATE_TABLE_NAME} (key TEXT PRIMARY KEY, last_timestamp INTEGER)")
+    conn.execute(
+        f"CREATE TABLE IF NOT EXISTS {STATE_TABLE_NAME} "
+        "(key TEXT PRIMARY KEY, last_timestamp INTEGER)"
+    )
     conn.execute(f"""
         CREATE TABLE IF NOT EXISTS {COMPLETION_TABLE_NAME} (
             workout_id     INTEGER PRIMARY KEY,
@@ -430,25 +441,33 @@ def ensure_schema(conn: sqlite3.Connection) -> None:
 
 
 def upsert_workout(conn: sqlite3.Connection, workout_id: int, date: str, rows: list[dict]) -> None:
-    """Replace all rows for one workout: delete-then-reinsert, since individual sets have no stable identity."""
+    """Replace all rows for one workout: delete-then-reinsert, since individual sets have
+    no stable identity."""
     conn.execute(f"DELETE FROM {TABLE_NAME} WHERE workout_id = ?", (workout_id,))
     conn.executemany(
-        f"INSERT INTO {TABLE_NAME} (workout_id, date, exercise, reps, weight_kg, rpe) VALUES (?, ?, ?, ?, ?, ?)",
+        f"INSERT INTO {TABLE_NAME} (workout_id, date, exercise, reps, weight_kg, rpe) "
+        "VALUES (?, ?, ?, ?, ?, ?)",
         [(workout_id, date, r["exercise"], r["reps"], r["weight_kg"], r["rpe"]) for r in rows],
     )
 
 
-def upsert_workout_completion(conn: sqlite3.Connection, workout_id: int, date: str, planned: int, completed: int) -> None:
+def upsert_workout_completion(
+    conn: sqlite3.Connection, workout_id: int, date: str, planned: int, completed: int
+) -> None:
     conn.execute(
-        f"INSERT INTO {COMPLETION_TABLE_NAME} (workout_id, date, planned_sets, completed_sets) VALUES (?, ?, ?, ?)"
-        f" ON CONFLICT(workout_id) DO UPDATE SET"
-        f"   date=excluded.date, planned_sets=excluded.planned_sets, completed_sets=excluded.completed_sets",
+        f"INSERT INTO {COMPLETION_TABLE_NAME} (workout_id, date, planned_sets, completed_sets) "
+        "VALUES (?, ?, ?, ?)"
+        " ON CONFLICT(workout_id) DO UPDATE SET"
+        "   date=excluded.date, planned_sets=excluded.planned_sets,"
+        " completed_sets=excluded.completed_sets",
         (workout_id, date, planned, completed),
     )
 
 
 def get_last_synced_id(conn: sqlite3.Connection) -> int:
-    row = conn.execute(f"SELECT last_timestamp FROM {STATE_TABLE_NAME} WHERE key = ?", (STATE_KEY,)).fetchone()
+    row = conn.execute(
+        f"SELECT last_timestamp FROM {STATE_TABLE_NAME} WHERE key = ?", (STATE_KEY,)
+    ).fetchone()
     return row[0] if row else 0
 
 
@@ -461,10 +480,22 @@ def set_last_synced_id(conn: sqlite3.Connection, workout_id: int) -> None:
 
 
 def main():
-    parser = argparse.ArgumentParser(description="Sync Liftosaur training history (SBD lifts) into the SQLite warehouse.")
-    parser.add_argument("--db", type=Path, default=DEFAULT_DB_PATH, help="Path to the SQLite database file.")
-    parser.add_argument("--dry-run", action="store_true", help="Fetch and print what would be written, but don't touch the DB.")
-    parser.add_argument("--full", action="store_true", help="Ignore sync_state and re-pull the full workout history.")
+    parser = argparse.ArgumentParser(
+        description="Sync Liftosaur training history (SBD lifts) into the SQLite warehouse."
+    )
+    parser.add_argument(
+        "--db", type=Path, default=DEFAULT_DB_PATH, help="Path to the SQLite database file."
+    )
+    parser.add_argument(
+        "--dry-run",
+        action="store_true",
+        help="Fetch and print what would be written, but don't touch the DB.",
+    )
+    parser.add_argument(
+        "--full",
+        action="store_true",
+        help="Ignore sync_state and re-pull the full workout history.",
+    )
     args = parser.parse_args()
 
     if not API_KEY:
@@ -519,7 +550,12 @@ def main():
         if len(parsed) > 5:
             print(f"  ... and {len(parsed) - 5} more workout(s)")
         for workout_id, date, planned, completed in completions[:5]:
-            print(f"  {date} (workout {workout_id}): {completed}/{planned} sets ({min(completed/planned*100, 100):.0f}%)" if planned else f"  {date}: no target data")
+            pct = min(completed / planned * 100, 100) if planned else None
+            print(
+                f"  {date} (workout {workout_id}): {completed}/{planned} sets ({pct:.0f}%)"
+                if planned
+                else f"  {date}: no target data"
+            )
         if len(completions) > 5:
             print(f"  ... and {len(completions) - 5} more workout(s)")
         print("[DRY RUN] No changes written to the database, sync_state left untouched.")
@@ -538,7 +574,10 @@ def main():
     finally:
         conn.close()
 
-    print(f"Synced {len(parsed)} workout(s) -> {args.db.name} ({total_rows} total rows in {TABLE_NAME}).")
+    print(
+        f"Synced {len(parsed)} workout(s) -> {args.db.name} "
+        f"({total_rows} total rows in {TABLE_NAME})."
+    )
 
 
 if __name__ == "__main__":

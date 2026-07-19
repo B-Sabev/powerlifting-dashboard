@@ -69,7 +69,8 @@ def column_for_key(key: str) -> tuple[str, str]:
 
 
 def parse_and_convert(raw_value: str, target_unit: str, key: str) -> float | None:
-    """Parse a 'NUMBER+UNIT' string and convert to target_unit; None (with a warning) if unparseable/unsupported."""
+    """Parse a 'NUMBER+UNIT' string and convert to target_unit; None (with a warning) if
+    unparseable/unsupported."""
     match = VALUE_RE.match(raw_value or "")
     if not match:
         print(f"  [WARN] Could not parse value '{raw_value}' for key '{key}' -- skipping.")
@@ -126,7 +127,9 @@ def fetch_key_history_since(key: str, since_ts: int) -> list[dict]:
     cursor = None
     while True:
         params = {"cursor": cursor} if cursor else {}
-        resp = requests.get(f"{BASE_URL}/measurements/{key}", headers=_auth_headers(), params=params, timeout=10)
+        resp = requests.get(
+            f"{BASE_URL}/measurements/{key}", headers=_auth_headers(), params=params, timeout=10
+        )
         resp.raise_for_status()
         payload = resp.json().get("data", {})
         page = payload.get("values", [])
@@ -155,7 +158,8 @@ def ensure_columns(conn: sqlite3.Connection, columns: set) -> None:
 
 
 def upsert_day(conn: sqlite3.Connection, date: str, values: dict) -> None:
-    """Insert or update one date's row, touching only the columns provided (others left untouched)."""
+    """Insert or update one date's row, touching only the columns provided (others left
+    untouched)."""
     cols = ["date"] + list(values.keys())
     placeholders = ", ".join("?" for _ in cols)
     update_clause = ", ".join(f"{c}=excluded.{c}" for c in values)
@@ -168,12 +172,15 @@ def upsert_day(conn: sqlite3.Connection, date: str, values: dict) -> None:
 
 def get_last_synced_ts(conn: sqlite3.Connection, key: str) -> int:
     """Return the newest timestamp already synced for this key, or 0 if never synced."""
-    row = conn.execute(f"SELECT last_timestamp FROM {STATE_TABLE_NAME} WHERE key = ?", (key,)).fetchone()
+    row = conn.execute(
+        f"SELECT last_timestamp FROM {STATE_TABLE_NAME} WHERE key = ?", (key,)
+    ).fetchone()
     return row[0] if row else 0
 
 
 def set_last_synced_ts(conn: sqlite3.Connection, key: str, ts: int) -> None:
-    """Record the newest timestamp synced for this key, so the next run can skip everything up to it."""
+    """Record the newest timestamp synced for this key, so the next run can skip
+    everything up to it."""
     conn.execute(
         f"INSERT INTO {STATE_TABLE_NAME} (key, last_timestamp) VALUES (?, ?) "
         f"ON CONFLICT(key) DO UPDATE SET last_timestamp = excluded.last_timestamp",
@@ -182,10 +189,20 @@ def set_last_synced_ts(conn: sqlite3.Connection, key: str, ts: int) -> None:
 
 
 def main():
-    parser = argparse.ArgumentParser(description="Sync Liftosaur body measurements into the SQLite warehouse.")
-    parser.add_argument("--db", type=Path, default=DEFAULT_DB_PATH, help="Path to the SQLite database file.")
-    parser.add_argument("--dry-run", action="store_true", help="Fetch and print what would be written, but don't touch the DB.")
-    parser.add_argument("--full", action="store_true", help="Ignore sync_state and re-pull each key's full history.")
+    parser = argparse.ArgumentParser(
+        description="Sync Liftosaur body measurements into the SQLite warehouse."
+    )
+    parser.add_argument(
+        "--db", type=Path, default=DEFAULT_DB_PATH, help="Path to the SQLite database file."
+    )
+    parser.add_argument(
+        "--dry-run",
+        action="store_true",
+        help="Fetch and print what would be written, but don't touch the DB.",
+    )
+    parser.add_argument(
+        "--full", action="store_true", help="Ignore sync_state and re-pull each key's full history."
+    )
     args = parser.parse_args()
 
     if not API_KEY:
@@ -199,14 +216,20 @@ def main():
     args.db.parent.mkdir(parents=True, exist_ok=True)
     conn = sqlite3.connect(args.db)
     conn.execute(f"CREATE TABLE IF NOT EXISTS {TABLE_NAME} (date TEXT PRIMARY KEY)")
-    conn.execute(f"CREATE TABLE IF NOT EXISTS {STATE_TABLE_NAME} (key TEXT PRIMARY KEY, last_timestamp INTEGER)")
+    conn.execute(
+        f"CREATE TABLE IF NOT EXISTS {STATE_TABLE_NAME} "
+        "(key TEXT PRIMARY KEY, last_timestamp INTEGER)"
+    )
 
     by_date: dict = {}
     max_ts_per_key: dict = {}
     for key in keys:
         column, target_unit = column_for_key(key)
         if not COLUMN_NAME_RE.match(column):
-            print(f"  [WARN] Derived column name '{column}' for key '{key}' is invalid -- skipping this key.")
+            print(
+                f"  [WARN] Derived column name '{column}' for key '{key}' is invalid "
+                "-- skipping this key."
+            )
             continue
         since_ts = 0 if args.full else get_last_synced_ts(conn, key)
         print(f"-> Fetching '{key}' -> column '{column}' (since_ts={since_ts})")
@@ -237,7 +260,10 @@ def main():
 
     if args.dry_run:
         all_columns = sorted({col for row in by_date.values() for col in row})
-        print(f"\n[DRY RUN] Would upsert {len(by_date)} date(s) across {len(all_columns)} column(s): {', '.join(all_columns)}")
+        print(
+            f"\n[DRY RUN] Would upsert {len(by_date)} date(s) across {len(all_columns)} "
+            f"column(s): {', '.join(all_columns)}"
+        )
         for date in sorted(by_date)[:5]:
             print(f"  {date}: {by_date[date]}")
         if len(by_date) > 5:
@@ -258,7 +284,10 @@ def main():
     finally:
         conn.close()
 
-    print(f"Synced {len(by_date)} date(s) -> {args.db.name} ({total_rows} total rows in {TABLE_NAME}).")
+    print(
+        f"Synced {len(by_date)} date(s) -> {args.db.name} "
+        f"({total_rows} total rows in {TABLE_NAME})."
+    )
 
 
 if __name__ == "__main__":

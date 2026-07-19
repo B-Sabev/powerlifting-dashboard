@@ -13,11 +13,17 @@ from lib.ui import apply_default_layout, date_range_slider, filter_by_range
 
 def render(weight_df: pd.DataFrame | None, nutrition_df: pd.DataFrame | None) -> None:
     if weight_df is None:
-        st.info("Sync bodyweight via `scripts/sync_liftosaur_body_measurements.py` to see weight tracking.")
+        st.info(
+            "Sync bodyweight via `scripts/sync_liftosaur_body_measurements.py` "
+            "to see weight tracking."
+        )
         st.stop()
 
     if nutrition_df is None:
-        st.info("Run `python scripts/sync_cronometer.py` to populate the nutrition database and unlock this tab.")
+        st.info(
+            "Run `python scripts/sync_cronometer.py` to populate the nutrition "
+            "database and unlock this tab."
+        )
         st.stop()
 
     st.subheader("Weight & nutrition tracking")
@@ -26,7 +32,10 @@ def render(weight_df: pd.DataFrame | None, nutrition_df: pd.DataFrame | None) ->
     # Merge weight and nutrition on date (inner join keeps only days with both)
     merged = pd.merge(weight_df, nutrition_df, on="date", how="inner")
     if merged.empty:
-        st.info("No overlapping dates between weight and nutrition data yet. Ensure both have entries on the same days.")
+        st.info(
+            "No overlapping dates between weight and nutrition data yet. Ensure both "
+            "have entries on the same days."
+        )
         st.stop()
 
     # ---- Date range slider ----
@@ -51,7 +60,7 @@ def render(weight_df: pd.DataFrame | None, nutrition_df: pd.DataFrame | None) ->
                 value=0.0,
                 step=0.01,
                 format="%.2f",
-                help="e.g., 0.5% of body weight per week"
+                help="e.g., 0.5% of body weight per week",
             )
             target_rate = target_percent / 100.0 * avg_bw
             st.caption(f"= {target_rate:.2f} kg/week")
@@ -61,7 +70,7 @@ def render(weight_df: pd.DataFrame | None, nutrition_df: pd.DataFrame | None) ->
                 value=0.0,
                 step=0.01,
                 format="%.2f",
-                help="Positive for gaining, negative for losing."
+                help="Positive for gaining, negative for losing.",
             )
 
     with col3:
@@ -71,7 +80,7 @@ def render(weight_df: pd.DataFrame | None, nutrition_df: pd.DataFrame | None) ->
             max_value=30,
             value=7,
             step=1,
-            key="roll_window"
+            key="roll_window",
         )
 
     # ---- Compute rolling average on the *full* dataset (to get values at range boundaries) ----
@@ -84,7 +93,10 @@ def render(weight_df: pd.DataFrame | None, nutrition_df: pd.DataFrame | None) ->
 
     valid_rolling = range_data.dropna(subset=["rolling"])
     if len(valid_rolling) < 2:
-        st.info(f"Not enough data yet to compute a {roll_window}-day rolling average. Try a smaller window or wider range.")
+        st.info(
+            f"Not enough data yet to compute a {roll_window}-day rolling average. "
+            "Try a smaller window or wider range."
+        )
         st.stop()
 
     start_row = valid_rolling.iloc[0]
@@ -112,14 +124,13 @@ def render(weight_df: pd.DataFrame | None, nutrition_df: pd.DataFrame | None) ->
         target = maint + target_kg_per_day * kcal_per_kg
         return maint, target
 
-    maint_fat,  target_fat  = _scenario(KCAL_PER_KG_FAT)
+    maint_fat, target_fat = _scenario(KCAL_PER_KG_FAT)
     maint_lean, target_lean = _scenario(KCAL_PER_KG_LEAN)
 
     # sort() handles sign-flip: on a cut (negative slope) the larger kcal/kg
     # gives the *higher* maintenance estimate, so ordering isn't always fat→lean.
-    maint_low,  maint_high  = sorted((maint_fat,  maint_lean))
+    maint_low, maint_high = sorted((maint_fat, maint_lean))
     target_low, target_high = sorted((target_fat, target_lean))
-    maint_mid  = (maint_low  + maint_high)  / 2
     target_mid = (target_low + target_high) / 2
 
     # ---- Weight over time (Plot) ----
@@ -129,48 +140,60 @@ def render(weight_df: pd.DataFrame | None, nutrition_df: pd.DataFrame | None) ->
     plot_data = plot_data.merge(full_merged[["date", "rolling"]], on="date", how="left")
 
     fig = go.Figure()
-    fig.add_trace(go.Scatter(
-        x=plot_data["date"],
-        y=plot_data["bodyweight"],
-        mode="markers",
-        name="Daily weight",
-        marker=dict(color="#4C9BE8", size=6, opacity=0.6),
-        hovertemplate="%{x|%d %b %Y}<br>%{y:.1f} kg<extra></extra>"
-    ))
-    fig.add_trace(go.Scatter(
-        x=plot_data["date"],
-        y=plot_data["rolling"],
-        mode="lines",
-        name=f"{roll_window}-day rolling avg",
-        line=dict(color="#E8844C", width=2),
-        hovertemplate="%{x|%d %b %Y}<br>%{y:.1f} kg<extra></extra>"
-    ))
-    fig.add_trace(go.Scatter(
-        x=[start_date, end_date],
-        y=[start_rolling, end_rolling],
-        mode="markers",
-        name="Rate start/end",
-        marker=dict(color=PALETTE["red"], size=12, symbol="star"),
-        hovertemplate="%{x|%d %b %Y}<br>Rolling avg: %{y:.1f} kg<extra></extra>"
-    ))
-    fig.add_trace(go.Scatter(
-        x=[start_date, end_date],
-        y=[start_rolling, end_rolling],
-        mode="lines",
-        name="Rate line",
-        line=dict(color=PALETTE["red"], width=2, dash="dot"),
-        hoverinfo="skip"
-    ))
+    fig.add_trace(
+        go.Scatter(
+            x=plot_data["date"],
+            y=plot_data["bodyweight"],
+            mode="markers",
+            name="Daily weight",
+            marker=dict(color="#4C9BE8", size=6, opacity=0.6),
+            hovertemplate="%{x|%d %b %Y}<br>%{y:.1f} kg<extra></extra>",
+        )
+    )
+    fig.add_trace(
+        go.Scatter(
+            x=plot_data["date"],
+            y=plot_data["rolling"],
+            mode="lines",
+            name=f"{roll_window}-day rolling avg",
+            line=dict(color="#E8844C", width=2),
+            hovertemplate="%{x|%d %b %Y}<br>%{y:.1f} kg<extra></extra>",
+        )
+    )
+    fig.add_trace(
+        go.Scatter(
+            x=[start_date, end_date],
+            y=[start_rolling, end_rolling],
+            mode="markers",
+            name="Rate start/end",
+            marker=dict(color=PALETTE["red"], size=12, symbol="star"),
+            hovertemplate="%{x|%d %b %Y}<br>Rolling avg: %{y:.1f} kg<extra></extra>",
+        )
+    )
+    fig.add_trace(
+        go.Scatter(
+            x=[start_date, end_date],
+            y=[start_rolling, end_rolling],
+            mode="lines",
+            name="Rate line",
+            line=dict(color=PALETTE["red"], width=2, dash="dot"),
+            hoverinfo="skip",
+        )
+    )
 
     apply_default_layout(fig, xaxis_title="Date", yaxis_title="Bodyweight (kg)")
-    st.plotly_chart(fig, width='stretch')
+    st.plotly_chart(fig, width="stretch")
 
     # ---- Progress Summary (Metrics) ----
     st.divider()
     st.subheader("Progress summary")
     colA, colB, colC, colD = st.columns(4)
     with colA:
-        st.metric("Actual rate", f"{rate_actual:+.2f} kg/week", delta=f"{rate_actual - target_rate:+.2f} vs target")
+        st.metric(
+            "Actual rate",
+            f"{rate_actual:+.2f} kg/week",
+            delta=f"{rate_actual - target_rate:+.2f} vs target",
+        )
     with colB:
         st.metric("Target rate", f"{target_rate:+.2f} kg/week")
     with colC:
@@ -179,7 +202,10 @@ def render(weight_df: pd.DataFrame | None, nutrition_df: pd.DataFrame | None) ->
         st.metric(
             "Maintenance",
             f"{maint_low:.0f}–{maint_high:.0f} kcal/day",
-            help=f"Range: lean-mass bound ({KCAL_PER_KG_LEAN} kcal/kg) → fat bound ({KCAL_PER_KG_FAT} kcal/kg)"
+            help=(
+                f"Range: lean-mass bound ({KCAL_PER_KG_LEAN} kcal/kg) → "
+                f"fat bound ({KCAL_PER_KG_FAT} kcal/kg)"
+            ),
         )
 
     colE, colF = st.columns(2)
@@ -188,7 +214,10 @@ def render(weight_df: pd.DataFrame | None, nutrition_df: pd.DataFrame | None) ->
             "Target intake",
             f"{target_low:.0f}–{target_high:.0f} kcal/day",
             delta=f"{target_mid - avg_cal:+.0f} from current (midpoint)",
-            help=f"Range matches the maintenance bounds; delta uses midpoint ({target_mid:.0f} kcal/day)"
+            help=(
+                f"Range matches the maintenance bounds; delta uses midpoint "
+                f"({target_mid:.0f} kcal/day)"
+            ),
         )
     with colF:
         st.metric("Rate period", f"{start_date.strftime('%d %b')} → {end_date.strftime('%d %b')}")
@@ -196,23 +225,31 @@ def render(weight_df: pd.DataFrame | None, nutrition_df: pd.DataFrame | None) ->
     # ---- Optional: show calorie intake over time ----
     with st.expander("📉 Daily Calorie Intake"):
         fig_cal = go.Figure()
-        fig_cal.add_trace(go.Scatter(
-            x=plot_data["date"],
-            y=plot_data["Energy (kcal)"],
-            mode="markers+lines",
-            name="Daily kcal",
-            marker=dict(color="#C44CE8", size=4, opacity=0.5),
-            line=dict(width=1)
-        ))
+        fig_cal.add_trace(
+            go.Scatter(
+                x=plot_data["date"],
+                y=plot_data["Energy (kcal)"],
+                mode="markers+lines",
+                name="Daily kcal",
+                marker=dict(color="#C44CE8", size=4, opacity=0.5),
+                line=dict(width=1),
+            )
+        )
         fig_cal.add_hrect(
-            y0=maint_low, y1=maint_high,
-            fillcolor=PALETTE["green"], opacity=0.12, line_width=0,
+            y0=maint_low,
+            y1=maint_high,
+            fillcolor=PALETTE["green"],
+            opacity=0.12,
+            line_width=0,
             annotation_text=f"Maintenance ({maint_low:.0f}–{maint_high:.0f})",
             annotation_position="top right",
         )
         fig_cal.add_hrect(
-            y0=target_low, y1=target_high,
-            fillcolor=PALETTE["red"], opacity=0.12, line_width=0,
+            y0=target_low,
+            y1=target_high,
+            fillcolor=PALETTE["red"],
+            opacity=0.12,
+            line_width=0,
             annotation_text=f"Target ({target_low:.0f}–{target_high:.0f})",
             annotation_position="bottom right",
         )
@@ -222,7 +259,7 @@ def render(weight_df: pd.DataFrame | None, nutrition_df: pd.DataFrame | None) ->
             height=300,
             margin=dict(l=40, r=20, t=10, b=40),
         )
-        st.plotly_chart(fig_cal, width='stretch')
+        st.plotly_chart(fig_cal, width="stretch")
 
     # ---- Show raw data table optionally ----
     with st.expander("View merged data"):
@@ -231,5 +268,5 @@ def render(weight_df: pd.DataFrame | None, nutrition_df: pd.DataFrame | None) ->
                 bodyweight=lambda d: d["bodyweight"].round(1),
                 rolling=lambda d: d["rolling"].round(1),
             ),
-            width='stretch'
+            width="stretch",
         )

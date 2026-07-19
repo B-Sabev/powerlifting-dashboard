@@ -102,7 +102,8 @@ ALL_COLUMNS = list(COLUMN_MAP.values())  # date first, completed last, matches d
 
 
 def build_schema_sql() -> str:
-    """Generate the CREATE TABLE statement from COLUMN_MAP so the schema can't drift from the parser."""
+    """Generate the CREATE TABLE statement from COLUMN_MAP so the schema can't drift from
+    the parser."""
     # Column names here come from the static COLUMN_MAP above (hardcoded in this file, not
     # derived from external/API input), so f-string interpolation into SQL is safe -- unlike
     # the Liftosaur measurement-key case in sync_liftosaur_body_measurements.py, which
@@ -118,7 +119,8 @@ def build_schema_sql() -> str:
 
 
 def load_csv(csv_path: Path) -> pd.DataFrame:
-    """Read a Cronometer daily-nutrition export and return it with clean column names, ready to upsert."""
+    """Read a Cronometer daily-nutrition export and return it with clean column names,
+    ready to upsert."""
     df = pd.read_csv(csv_path)
 
     missing = set(COLUMN_MAP) - set(df.columns)
@@ -136,14 +138,21 @@ def load_csv(csv_path: Path) -> pd.DataFrame:
     # on pandas' type sniffing) -- normalise both cases to 0/1 explicitly rather than relying
     # on pandas to guess right.
     df["completed"] = (
-        df["completed"].astype(str).str.strip().str.lower().map({"true": 1, "false": 0}).fillna(0).astype(int)
+        df["completed"]
+        .astype(str)
+        .str.strip()
+        .str.lower()
+        .map({"true": 1, "false": 0})
+        .fillna(0)
+        .astype(int)
     )
 
     return df
 
 
 def upsert(df: pd.DataFrame, db_path: Path) -> tuple[int, int]:
-    """Insert/update rows keyed on date. Returns (rows in this CSV, total rows in the table after)."""
+    """Insert/update rows keyed on date. Returns (rows in this CSV, total rows in the
+    table after)."""
     db_path.parent.mkdir(parents=True, exist_ok=True)
     conn = sqlite3.connect(db_path)
     try:
@@ -170,9 +179,15 @@ def upsert(df: pd.DataFrame, db_path: Path) -> tuple[int, int]:
 
 
 def main():
-    parser = argparse.ArgumentParser(description="Sync a Cronometer CSV export into the SQLite warehouse.")
-    parser.add_argument("--csv", type=Path, default=DEFAULT_CSV_PATH, help="Path to the Cronometer export CSV.")
-    parser.add_argument("--db", type=Path, default=DB_PATH, help="Path to the SQLite database file.")
+    parser = argparse.ArgumentParser(
+        description="Sync a Cronometer CSV export into the SQLite warehouse."
+    )
+    parser.add_argument(
+        "--csv", type=Path, default=DEFAULT_CSV_PATH, help="Path to the Cronometer export CSV."
+    )
+    parser.add_argument(
+        "--db", type=Path, default=DB_PATH, help="Path to the SQLite database file."
+    )
     args = parser.parse_args()
 
     if not args.csv.exists():
@@ -180,7 +195,10 @@ def main():
 
     df = load_csv(args.csv)
     n_csv, n_total = upsert(df, args.db)
-    print(f"Synced {n_csv} rows from {args.csv.name} -> {args.db.name} ({n_total} total rows in {TABLE_NAME}).")
+    print(
+        f"Synced {n_csv} rows from {args.csv.name} -> {args.db.name} "
+        f"({n_total} total rows in {TABLE_NAME})."
+    )
 
 
 if __name__ == "__main__":

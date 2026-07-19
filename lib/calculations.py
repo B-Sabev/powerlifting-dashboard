@@ -42,9 +42,9 @@ def estimate_e1rm(row) -> float | None:
         return None  # ignore — not estimating 1RM from 6+ reps
 
     if reps == 1:
-        rpe = float(rpe) if pd.notna(rpe) else 9.0   # default RPE 9 if missing
-        rpe = round(rpe * 2) / 2                      # snap to nearest 0.5
-        rpe = max(7.0, min(rpe, 10.0))                # clamp to table range
+        rpe = float(rpe) if pd.notna(rpe) else 9.0  # default RPE 9 if missing
+        rpe = round(rpe * 2) / 2  # snap to nearest 0.5
+        rpe = max(7.0, min(rpe, 10.0))  # clamp to table range
         return weight / RTS_TABLE[(1, rpe)]
 
     # reps 2–5: Epley
@@ -54,7 +54,7 @@ def estimate_e1rm(row) -> float | None:
 # ── Competition score formulas ───────────────────────────────────────────────
 def dots_score(total: float, bw: float) -> float:
     a, b, c, d, e = -0.000001093, 0.0007391293, -0.1918209091, 24.0900756, -307.75076
-    coeff = 500 / (a*bw**4 + b*bw**3 + c*bw**2 + d*bw + e)
+    coeff = 500 / (a * bw**4 + b * bw**3 + c * bw**2 + d * bw + e)
     return round(total * coeff, 1)
 
 
@@ -78,7 +78,8 @@ def compute_totals(sets_df: pd.DataFrame, weight_df: pd.DataFrame) -> pd.DataFra
 
     rows = []
     for day in training_days:
-        def best_lift(exercise: str):
+
+        def best_lift(exercise: str, day=day):
             past = session_max[(session_max["Exercise"] == exercise) & (session_max["date"] <= day)]
             if past.empty:
                 return None
@@ -86,9 +87,9 @@ def compute_totals(sets_df: pd.DataFrame, weight_df: pd.DataFrame) -> pd.DataFra
 
         squat = best_lift("Squat")
         bench = best_lift("Bench Press")
-        conv  = best_lift("Deadlift")
-        sumo  = best_lift("Sumo Deadlift")
-        dl    = max(filter(None, [conv, sumo]), default=None)
+        conv = best_lift("Deadlift")
+        sumo = best_lift("Sumo Deadlift")
+        dl = max(filter(None, [conv, sumo]), default=None)
 
         if None in (squat, bench, dl):
             continue  # haven't hit all 3 lifts yet
@@ -100,15 +101,17 @@ def compute_totals(sets_df: pd.DataFrame, weight_df: pd.DataFrame) -> pd.DataFra
             continue
         bw = bw_rows.iloc[-1]["bodyweight"]
 
-        rows.append({
-            "date":       day,
-            "squat":      squat,
-            "bench":      bench,
-            "deadlift":   dl,
-            "total":      total,
-            "bodyweight": bw,
-            "dots":       dots_score(total, bw),
-        })
+        rows.append(
+            {
+                "date": day,
+                "squat": squat,
+                "bench": bench,
+                "deadlift": dl,
+                "total": total,
+                "bodyweight": bw,
+                "dots": dots_score(total, bw),
+            }
+        )
 
     return pd.DataFrame(rows)
 
@@ -127,14 +130,15 @@ def relative_e1rm(session_df: pd.DataFrame, window: int = 7, min_periods: int = 
     lib.data.load_training. Returned Series is aligned to session_df's index.
     """
     df = session_df.sort_values("date")
-    baseline = (
-        df.groupby("Exercise", group_keys=False)["e1rm"]
-        .apply(lambda s: s.shift(1).rolling(window, min_periods=min_periods).mean())
+    baseline = df.groupby("Exercise", group_keys=False)["e1rm"].apply(
+        lambda s: s.shift(1).rolling(window, min_periods=min_periods).mean()
     )
     return (df["e1rm"] / baseline).reindex(session_df.index)
 
 
-def acwr(dates, loads, acute_window: int = 7, chronic_window: int = 28, method: str = "ra") -> pd.Series:
+def acwr(
+    dates, loads, acute_window: int = 7, chronic_window: int = 28, method: str = "ra"
+) -> pd.Series:
     """Acute:chronic workload ratio — a sports-science readiness/fatigue proxy.
     Acute = recent training load (last `acute_window` days), chronic = the
     longer-run baseline (last `chronic_window` days, expressed as the same
@@ -203,6 +207,7 @@ def ridge_standardized_coefs(X: pd.DataFrame, y: pd.Series, alpha: float = 1.0) 
 
 # ── Sleep consistency (Tab 5) ────────────────────────────────────────────────
 
+
 def sleep_timing(checkin_df: pd.DataFrame) -> pd.DataFrame:
     """Parse bed/wake clock times into per-night derived quantities.
 
@@ -225,8 +230,11 @@ def sleep_timing(checkin_df: pd.DataFrame) -> pd.DataFrame:
         sleep_efficiency – sleep_hours / time_in_bed_h, clipped to [0, 1]
         is_work_day     – True when work_hours > 0
     """
-    cols = [c for c in ("date", "bed_time", "awake_time", "sleep_hours", "work_hours")
-            if c in checkin_df.columns]
+    cols = [
+        c
+        for c in ("date", "bed_time", "awake_time", "sleep_hours", "work_hours")
+        if c in checkin_df.columns
+    ]
     df = checkin_df[cols].copy()
 
     df = df[df["bed_time"].notna() & df["awake_time"].notna()]
@@ -258,10 +266,18 @@ def sleep_timing(checkin_df: pd.DataFrame) -> pd.DataFrame:
     wh = df["work_hours"] if "work_hours" in df.columns else pd.Series(0, index=df.index)
     df["is_work_day"] = wh.fillna(0) > 0
 
-    return df[[
-        "date", "bedtime_h", "waketime_h", "mid_sleep_h",
-        "time_in_bed_h", "sleep_hours", "sleep_efficiency", "is_work_day",
-    ]].reset_index(drop=True)
+    return df[
+        [
+            "date",
+            "bedtime_h",
+            "waketime_h",
+            "mid_sleep_h",
+            "time_in_bed_h",
+            "sleep_hours",
+            "sleep_efficiency",
+            "is_work_day",
+        ]
+    ].reset_index(drop=True)
 
 
 def sleep_regularity_index(timing_df: pd.DataFrame, epoch_min: int = 5) -> float:
@@ -323,9 +339,17 @@ def sleep_consistency_metrics(timing_df: pd.DataFrame) -> dict:
     n = len(timing_df)
     nan = float("nan")
     if n == 0:
-        return dict(sri=nan, social_jetlag=nan, sd_mid_sleep=nan,
-                    sd_bedtime=nan, sd_waketime=nan, sd_duration=nan,
-                    mean_efficiency=nan, sd_efficiency=nan, n_nights=0)
+        return dict(
+            sri=nan,
+            social_jetlag=nan,
+            sd_mid_sleep=nan,
+            sd_bedtime=nan,
+            sd_waketime=nan,
+            sd_duration=nan,
+            mean_efficiency=nan,
+            sd_efficiency=nan,
+            n_nights=0,
+        )
 
     work = timing_df[timing_df["is_work_day"]]
     free = timing_df[~timing_df["is_work_day"]]
@@ -338,15 +362,15 @@ def sleep_consistency_metrics(timing_df: pd.DataFrame) -> dict:
     sd = lambda col: float(timing_df[col].std()) * h2m if n >= 2 else nan  # noqa: E731
 
     return {
-        "sri":             sleep_regularity_index(timing_df),
-        "social_jetlag":   social_jetlag,
-        "sd_mid_sleep":    sd("mid_sleep_h"),
-        "sd_bedtime":      sd("bedtime_h"),
-        "sd_waketime":     sd("waketime_h"),
-        "sd_duration":     float(timing_df["sleep_hours"].std() * h2m) if n >= 2 else nan,
+        "sri": sleep_regularity_index(timing_df),
+        "social_jetlag": social_jetlag,
+        "sd_mid_sleep": sd("mid_sleep_h"),
+        "sd_bedtime": sd("bedtime_h"),
+        "sd_waketime": sd("waketime_h"),
+        "sd_duration": float(timing_df["sleep_hours"].std() * h2m) if n >= 2 else nan,
         "mean_efficiency": float(timing_df["sleep_efficiency"].mean() * 100),
-        "sd_efficiency":   float(timing_df["sleep_efficiency"].std() * 100) if n >= 2 else nan,
-        "n_nights":        n,
+        "sd_efficiency": float(timing_df["sleep_efficiency"].std() * 100) if n >= 2 else nan,
+        "n_nights": n,
     }
 
 
@@ -379,13 +403,17 @@ def ffmi_rating(norm_ffmi: float) -> str:
 
 
 def target_ffm_for_ffmi(target_ffmi: float, height_cm: float) -> float:
-    return (target_ffmi - FFMI_NORM_COEF * (FFMI_REF_HEIGHT_M - height_cm / 100)) * (height_cm / 100) ** 2
+    return (target_ffmi - FFMI_NORM_COEF * (FFMI_REF_HEIGHT_M - height_cm / 100)) * (
+        height_cm / 100
+    ) ** 2
 
 
-def casey_butt_max_ffm(height_cm: float, wrist_cm: float, ankle_cm: float, body_fat_pct: float) -> float:
+def casey_butt_max_ffm(
+    height_cm: float, wrist_cm: float, ankle_cm: float, body_fat_pct: float
+) -> float:
     h_in, wrist_in, ankle_in = height_cm / 2.54, wrist_cm / 2.54, ankle_cm / 2.54
     return (
-        (h_in ** 1.5)
+        (h_in**1.5)
         * (np.sqrt(wrist_in) / CASEY_BUTT_WRIST_COEF + np.sqrt(ankle_in) / CASEY_BUTT_ANKLE_COEF)
         * (body_fat_pct / CASEY_BUTT_BF_DIVISOR + 1)
         * LB_TO_KG

@@ -26,7 +26,8 @@ from lib.constants import (
 
 @st.cache_data(ttl=3600)
 def load_training(db_path: Path) -> tuple[pd.DataFrame, pd.DataFrame]:
-    """Load SBD working sets from the SQLite warehouse (synced via scripts/sync_liftosaur_training_log.py)."""
+    """Load SBD working sets from the SQLite warehouse (synced via
+    scripts/sync_liftosaur_training_log.py)."""
     conn = sqlite3.connect(db_path)
     try:
         df = pd.read_sql_query(
@@ -36,7 +37,9 @@ def load_training(db_path: Path) -> tuple[pd.DataFrame, pd.DataFrame]:
     finally:
         conn.close()
 
-    df = df.rename(columns={"exercise": "Exercise", "reps": "Completed Reps", "rpe": "Completed RPE"})
+    df = df.rename(
+        columns={"exercise": "Exercise", "reps": "Completed Reps", "rpe": "Completed RPE"}
+    )
     df["date"] = pd.to_datetime(df["date"]).dt.normalize()
 
     # e1RM: RTS for singles, Epley for 2–5 reps, ignore 6+
@@ -57,7 +60,9 @@ def load_training(db_path: Path) -> tuple[pd.DataFrame, pd.DataFrame]:
 def load_checkin(path: Path) -> pd.DataFrame:
     checkin = pd.read_csv(
         path,
-        skiprows=2, header=None, names=CHECKIN_COLS,
+        skiprows=2,
+        header=None,
+        names=CHECKIN_COLS,
     )
     checkin["date"] = pd.to_datetime(checkin["date"], format="%d/%m/%Y", errors="coerce")
     checkin = checkin[checkin["date"].notna()].copy()
@@ -71,7 +76,8 @@ def load_checkin(path: Path) -> pd.DataFrame:
 
 @st.cache_data(ttl=3600)
 def load_weight(db_path: Path) -> pd.DataFrame:
-    """Load daily bodyweight from the SQLite warehouse (synced via scripts/sync_liftosaur_body_measurements.py)."""
+    """Load daily bodyweight from the SQLite warehouse (synced via
+    scripts/sync_liftosaur_body_measurements.py)."""
     conn = sqlite3.connect(db_path)
     try:
         weight = pd.read_sql_query(
@@ -88,7 +94,8 @@ def load_weight(db_path: Path) -> pd.DataFrame:
 
 @st.cache_data(ttl=3600)
 def load_nutrition(db_path: Path) -> pd.DataFrame:
-    """Load daily energy/macro totals from the SQLite warehouse (synced via scripts/sync_cronometer.py)."""
+    """Load daily energy/macro totals from the SQLite warehouse (synced via
+    scripts/sync_cronometer.py)."""
     conn = sqlite3.connect(db_path)
     try:
         df = pd.read_sql_query(
@@ -101,12 +108,14 @@ def load_nutrition(db_path: Path) -> pd.DataFrame:
     df["date"] = pd.to_datetime(df["date"]).dt.normalize()
     # Renamed back to the dashboard's existing display-column convention so
     # everything downstream (Tab 3) is untouched by the storage swap.
-    df = df.rename(columns={
-        "energy_kcal": "Energy (kcal)",
-        "protein_g": "Protein (g)",
-        "carbs_g": "Carbs (g)",
-        "fat_g": "Fat (g)",
-    })
+    df = df.rename(
+        columns={
+            "energy_kcal": "Energy (kcal)",
+            "protein_g": "Protein (g)",
+            "carbs_g": "Carbs (g)",
+            "fat_g": "Fat (g)",
+        }
+    )
     return df
 
 

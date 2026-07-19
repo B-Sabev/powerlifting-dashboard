@@ -34,7 +34,7 @@ DEMO_CHECKIN = DATA_DIR / "demo_daily_checkin.csv"
 
 # ── Date range ───────────────────────────────────────────────────────────────
 START_DATE = date(2025, 9, 1)
-END_DATE   = date.today() - timedelta(days=1)  # just before "today" on cloud
+END_DATE = date.today() - timedelta(days=1)  # just before "today" on cloud
 
 DAYS = (END_DATE - START_DATE).days + 1
 ALL_DATES = [START_DATE + timedelta(days=i) for i in range(DAYS)]
@@ -42,9 +42,10 @@ ALL_DATES = [START_DATE + timedelta(days=i) for i in range(DAYS)]
 # ── Athlete profile ──────────────────────────────────────────────────────────
 # 85 kg → slow bulk to 88 kg over ~42 weeks, then a short cut back to 86 kg.
 BW_START = 85.0
-BW_PEAK  = 88.0
-BW_END   = 86.5
-PEAK_WEEK = 32   # week number (of ~42) where bulk peaks before cut
+BW_PEAK = 88.0
+BW_END = 86.5
+PEAK_WEEK = 32  # week number (of ~42) where bulk peaks before cut
+
 
 def bodyweight(d: date) -> float:
     """Simulated bodyweight with realistic noise (weekly fluctuation ±1 kg)."""
@@ -59,6 +60,7 @@ def bodyweight(d: date) -> float:
     # weekly water-weight oscillation + daily noise
     noise = rng.gauss(0, 0.35) + 0.3 * math.sin(week * 2 * math.pi)
     return round(max(80.0, bw + noise), 1)
+
 
 def body_fat_pct(d: date) -> float:
     """Body fat measured every ~14 days, slight upward trend during bulk."""
@@ -77,18 +79,18 @@ def body_fat_pct(d: date) -> float:
 # 4-day upper/lower:  Mon=Squat+Bench, Wed=DL, Fri=Bench+Sumo, Sat=Squat
 # Monday=0, Tuesday=1 ... Sunday=6
 TRAINING_DAY_LIFTS: dict[int, list[str]] = {
-    0: ["Squat", "Bench Press"],          # Monday
-    2: ["Deadlift"],                       # Wednesday
+    0: ["Squat", "Bench Press"],  # Monday
+    2: ["Deadlift"],  # Wednesday
     4: ["Bench Press", "Sumo Deadlift"],  # Friday
-    5: ["Squat"],                          # Saturday
+    5: ["Squat"],  # Saturday
 }
 
 # Progression model: e1RM target for each lift at week 0 and week total_weeks.
 # We simulate 3 blocks (accumulation → intensification → peaking) then repeat.
 E1RM_START = {"Squat": 130.0, "Bench Press": 95.0, "Deadlift": 162.5, "Sumo Deadlift": 157.5}
-E1RM_END   = {"Squat": 157.5, "Bench Press": 112.5, "Deadlift": 197.5, "Sumo Deadlift": 185.0}
+E1RM_END = {"Squat": 157.5, "Bench Press": 112.5, "Deadlift": 197.5, "Sumo Deadlift": 185.0}
 
-BLOCK_WEEKS = 6   # weeks per block phase
+BLOCK_WEEKS = 6  # weeks per block phase
 # Per phase: (reps_to_use, rpe_typical, sets_per_workout)
 PHASES = [
     (4, 7.5, 4),  # accumulation
@@ -98,11 +100,13 @@ PHASES = [
     (1, 9.0, 2),  # peaking
 ]
 
+
 def target_e1rm(lift: str, d: date) -> float:
     """Linearly interpolated e1RM target for a given lift on a given date."""
     progress = (d - START_DATE).days / max(DAYS - 1, 1)
     e1rm = E1RM_START[lift] + (E1RM_END[lift] - E1RM_START[lift]) * progress
     return e1rm
+
 
 def current_phase(d: date) -> tuple[int, float, int]:
     """Return (reps, rpe, sets) for the training phase on date d."""
@@ -110,14 +114,15 @@ def current_phase(d: date) -> tuple[int, float, int]:
     phase_idx = (week // BLOCK_WEEKS) % len(PHASES)
     return PHASES[phase_idx]
 
+
 def weight_for_set(lift: str, d: date, reps: int, rpe: float) -> float:
     """Back-calculate the working weight from target e1RM and set scheme."""
     e1rm = target_e1rm(lift, d)
     if reps == 1:
         # weight = e1rm * RTS_fraction
-        rts = {
-            9.0: 0.955, 8.5: 0.939, 8.0: 0.922, 7.5: 0.907, 7.0: 0.892
-        }.get(round(rpe * 2) / 2, 0.922)
+        rts = {9.0: 0.955, 8.5: 0.939, 8.0: 0.922, 7.5: 0.907, 7.0: 0.892}.get(
+            round(rpe * 2) / 2, 0.922
+        )
         raw = e1rm * rts
     else:
         # Epley inverse: e1rm = weight * (1 + reps/30)  →  weight = e1rm / (1 + reps/30)
@@ -127,6 +132,7 @@ def weight_for_set(lift: str, d: date, reps: int, rpe: float) -> float:
     # Add day-to-day noise (±2.5 kg probability)
     noise_choices = [-2.5, 0.0, 0.0, 0.0, 2.5]
     return max(20.0, rounded + rng.choice(noise_choices))
+
 
 def build_training_log() -> list[dict]:
     """Generate all training-log rows (SBD working sets)."""
@@ -146,7 +152,9 @@ def build_training_log() -> list[dict]:
         reps, rpe, sets = current_phase(d)
 
         # Unique workout_id: millisecond-like large int
-        workout_id = int(datetime(d.year, d.month, d.day, 10, 0).timestamp() * 1000) + workout_counter
+        workout_id = (
+            int(datetime(d.year, d.month, d.day, 10, 0).timestamp() * 1000) + workout_counter
+        )
         workout_counter += 1
 
         for lift in lifts:
@@ -156,16 +164,19 @@ def build_training_log() -> list[dict]:
                 set_rpe = rpe + (0.5 if s == sets - 1 and sets > 1 else 0.0)
                 set_rpe = min(10.0, set_rpe)
                 set_wt = wt + (2.5 if s == sets - 1 and sets > 2 else 0.0)
-                rows.append({
-                    "workout_id": workout_id,
-                    "date":       d.isoformat(),
-                    "exercise":   lift,
-                    "reps":       reps,
-                    "weight_kg":  set_wt,
-                    "rpe":        set_rpe,
-                })
+                rows.append(
+                    {
+                        "workout_id": workout_id,
+                        "date": d.isoformat(),
+                        "exercise": lift,
+                        "reps": reps,
+                        "weight_kg": set_wt,
+                        "rpe": set_rpe,
+                    }
+                )
 
     return rows
+
 
 def build_workout_completion(training_rows: list[dict]) -> list[dict]:
     """One row per workout: planned ≈ completed (occasional partial sessions)."""
@@ -173,7 +184,12 @@ def build_workout_completion(training_rows: list[dict]) -> list[dict]:
     for r in training_rows:
         wid = r["workout_id"]
         if wid not in seen:
-            seen[wid] = {"workout_id": wid, "date": r["date"], "completed_sets": 0, "planned_sets": 0}
+            seen[wid] = {
+                "workout_id": wid,
+                "date": r["date"],
+                "completed_sets": 0,
+                "planned_sets": 0,
+            }
         seen[wid]["completed_sets"] += 1
 
     rows = []
@@ -182,17 +198,20 @@ def build_workout_completion(training_rows: list[dict]) -> list[dict]:
         # Planned is usually same; occasionally 1-2 extra sets were planned but skipped
         extra_planned = rng.choices([0, 1, 2], weights=[70, 20, 10])[0]
         planned = completed + extra_planned
-        rows.append({
-            "workout_id":    wid,
-            "date":          v["date"],
-            "planned_sets":  planned,
-            "completed_sets": completed,
-        })
+        rows.append(
+            {
+                "workout_id": wid,
+                "date": v["date"],
+                "planned_sets": planned,
+                "completed_sets": completed,
+            }
+        )
 
     return rows
 
 
 # ── Body measurements ────────────────────────────────────────────────────────
+
 
 def build_measurements() -> list[dict]:
     """Daily bodyweight; body-fat and tape every ~14 days."""
@@ -225,28 +244,31 @@ def build_measurements() -> list[dict]:
         if bw is None and bf is None and waist is None:
             continue
 
-        rows.append({
-            "date":               d.isoformat(),
-            "weight_kg":          bw,
-            "body_fat_percent":   bf,
-            "calf_left_cm":       None,
-            "thigh_right_cm":     None,
-            "shoulders_cm":       None,
-            "bicep_left_cm":      None,
-            "neck_cm":            None,
-            "hips_cm":            None,
-            "calf_right_cm":      None,
-            "waist_cm":           waist,
-            "thigh_left_cm":      None,
-            "chest_cm":           chest,
-            "forearm_left_cm":    None,
-            "bicep_right_cm":     None,
-            "forearm_right_cm":   None,
-        })
+        rows.append(
+            {
+                "date": d.isoformat(),
+                "weight_kg": bw,
+                "body_fat_percent": bf,
+                "calf_left_cm": None,
+                "thigh_right_cm": None,
+                "shoulders_cm": None,
+                "bicep_left_cm": None,
+                "neck_cm": None,
+                "hips_cm": None,
+                "calf_right_cm": None,
+                "waist_cm": waist,
+                "thigh_left_cm": None,
+                "chest_cm": chest,
+                "forearm_left_cm": None,
+                "bicep_right_cm": None,
+                "forearm_right_cm": None,
+            }
+        )
     return rows
 
 
 # ── Nutrition ────────────────────────────────────────────────────────────────
+
 
 def build_nutrition() -> list[dict]:
     """Daily macro summary — only energy/protein/carbs/fat needed by the dashboard."""
@@ -261,72 +283,74 @@ def build_nutrition() -> list[dict]:
         base_kcal = (2900 if is_training_day else 2500) + week_progress * 200
         kcal = round(base_kcal + rng.gauss(0, 150), 0)
         protein_g = round(rng.gauss(195, 20), 1)
-        fat_g     = round(rng.gauss(80, 10), 1)
-        carbs_g   = round(max(50, (kcal - protein_g * 4 - fat_g * 9) / 4), 1)
+        fat_g = round(rng.gauss(80, 10), 1)
+        carbs_g = round(max(50, (kcal - protein_g * 4 - fat_g * 9) / 4), 1)
 
-        rows.append({
-            "date":        d.isoformat(),
-            "energy_kcal": kcal,
-            "alcohol_g":   0.0,
-            "caffeine_mg": round(rng.gauss(150, 40), 1),
-            "oxalate_mg":  None,
-            "phytate_mg":  None,
-            "water_g":     round(rng.gauss(600, 100), 0),
-            "b1_thiamine_mg":       round(rng.gauss(1.8, 0.3), 2),
-            "b2_riboflavin_mg":     round(rng.gauss(2.5, 0.4), 2),
-            "b3_niacin_mg":         round(rng.gauss(35, 5), 1),
-            "b5_pantothenic_acid_mg": round(rng.gauss(8, 1.5), 2),
-            "b6_pyridoxine_mg":     round(rng.gauss(3, 0.5), 2),
-            "b12_cobalamin_ug":     round(rng.gauss(4, 1), 2),
-            "folate_ug":            round(rng.gauss(500, 80), 1),
-            "vitamin_c_mg":         round(rng.gauss(100, 30), 1),
-            "vitamin_d_iu":         round(rng.gauss(2000, 500), 0),
-            "vitamin_e_mg":         round(rng.gauss(12, 2), 1),
-            "vitamin_k_ug":         round(rng.gauss(150, 30), 1),
-            "calcium_mg":           round(rng.gauss(1200, 200), 0),
-            "copper_mg":            round(rng.gauss(1.5, 0.3), 2),
-            "iron_mg":              round(rng.gauss(18, 3), 1),
-            "magnesium_mg":         round(rng.gauss(400, 60), 0),
-            "manganese_mg":         round(rng.gauss(3, 0.5), 2),
-            "phosphorus_mg":        round(rng.gauss(1500, 200), 0),
-            "potassium_mg":         round(rng.gauss(4000, 500), 0),
-            "selenium_ug":          round(rng.gauss(80, 15), 1),
-            "sodium_mg":            round(rng.gauss(2500, 400), 0),
-            "zinc_mg":              round(rng.gauss(14, 2), 1),
-            "net_carbs_g":          round(carbs_g * 0.92, 1),
-            "carbs_g":              carbs_g,
-            "fiber_g":              round(rng.gauss(28, 5), 1),
-            "insoluble_fiber_g":    round(rng.gauss(8, 2), 1),
-            "soluble_fiber_g":      round(rng.gauss(5, 1), 1),
-            "starch_g":             round(rng.gauss(120, 20), 1),
-            "sugars_g":             round(rng.gauss(60, 15), 1),
-            "fat_g":                fat_g,
-            "cholesterol_mg":       round(rng.gauss(250, 50), 0),
-            "monounsaturated_g":    round(fat_g * 0.35 + rng.gauss(0, 2), 1),
-            "polyunsaturated_g":    round(fat_g * 0.25 + rng.gauss(0, 2), 1),
-            "saturated_g":          round(fat_g * 0.30 + rng.gauss(0, 2), 1),
-            "trans_fats_g":         0.0,
-            "omega_3_g":            round(rng.gauss(1.5, 0.4), 2),
-            "ala_g":                round(rng.gauss(0.8, 0.2), 2),
-            "dha_g":                round(rng.gauss(0.4, 0.1), 2),
-            "epa_g":                round(rng.gauss(0.3, 0.1), 2),
-            "omega_6_g":            round(rng.gauss(12, 2), 1),
-            "aa_g":                 round(rng.gauss(0.2, 0.05), 3),
-            "la_g":                 round(rng.gauss(10, 2), 1),
-            "cystine_g":            round(protein_g * 0.012, 2),
-            "histidine_g":          round(protein_g * 0.027, 2),
-            "isoleucine_g":         round(protein_g * 0.047, 2),
-            "leucine_g":            round(protein_g * 0.082, 2),
-            "lysine_g":             round(protein_g * 0.07, 2),
-            "methionine_g":         round(protein_g * 0.025, 2),
-            "phenylalanine_g":      round(protein_g * 0.044, 2),
-            "protein_g":            protein_g,
-            "threonine_g":          round(protein_g * 0.042, 2),
-            "tryptophan_g":         round(protein_g * 0.011, 2),
-            "tyrosine_g":           round(protein_g * 0.035, 2),
-            "valine_g":             round(protein_g * 0.053, 2),
-            "completed":            1,
-        })
+        rows.append(
+            {
+                "date": d.isoformat(),
+                "energy_kcal": kcal,
+                "alcohol_g": 0.0,
+                "caffeine_mg": round(rng.gauss(150, 40), 1),
+                "oxalate_mg": None,
+                "phytate_mg": None,
+                "water_g": round(rng.gauss(600, 100), 0),
+                "b1_thiamine_mg": round(rng.gauss(1.8, 0.3), 2),
+                "b2_riboflavin_mg": round(rng.gauss(2.5, 0.4), 2),
+                "b3_niacin_mg": round(rng.gauss(35, 5), 1),
+                "b5_pantothenic_acid_mg": round(rng.gauss(8, 1.5), 2),
+                "b6_pyridoxine_mg": round(rng.gauss(3, 0.5), 2),
+                "b12_cobalamin_ug": round(rng.gauss(4, 1), 2),
+                "folate_ug": round(rng.gauss(500, 80), 1),
+                "vitamin_c_mg": round(rng.gauss(100, 30), 1),
+                "vitamin_d_iu": round(rng.gauss(2000, 500), 0),
+                "vitamin_e_mg": round(rng.gauss(12, 2), 1),
+                "vitamin_k_ug": round(rng.gauss(150, 30), 1),
+                "calcium_mg": round(rng.gauss(1200, 200), 0),
+                "copper_mg": round(rng.gauss(1.5, 0.3), 2),
+                "iron_mg": round(rng.gauss(18, 3), 1),
+                "magnesium_mg": round(rng.gauss(400, 60), 0),
+                "manganese_mg": round(rng.gauss(3, 0.5), 2),
+                "phosphorus_mg": round(rng.gauss(1500, 200), 0),
+                "potassium_mg": round(rng.gauss(4000, 500), 0),
+                "selenium_ug": round(rng.gauss(80, 15), 1),
+                "sodium_mg": round(rng.gauss(2500, 400), 0),
+                "zinc_mg": round(rng.gauss(14, 2), 1),
+                "net_carbs_g": round(carbs_g * 0.92, 1),
+                "carbs_g": carbs_g,
+                "fiber_g": round(rng.gauss(28, 5), 1),
+                "insoluble_fiber_g": round(rng.gauss(8, 2), 1),
+                "soluble_fiber_g": round(rng.gauss(5, 1), 1),
+                "starch_g": round(rng.gauss(120, 20), 1),
+                "sugars_g": round(rng.gauss(60, 15), 1),
+                "fat_g": fat_g,
+                "cholesterol_mg": round(rng.gauss(250, 50), 0),
+                "monounsaturated_g": round(fat_g * 0.35 + rng.gauss(0, 2), 1),
+                "polyunsaturated_g": round(fat_g * 0.25 + rng.gauss(0, 2), 1),
+                "saturated_g": round(fat_g * 0.30 + rng.gauss(0, 2), 1),
+                "trans_fats_g": 0.0,
+                "omega_3_g": round(rng.gauss(1.5, 0.4), 2),
+                "ala_g": round(rng.gauss(0.8, 0.2), 2),
+                "dha_g": round(rng.gauss(0.4, 0.1), 2),
+                "epa_g": round(rng.gauss(0.3, 0.1), 2),
+                "omega_6_g": round(rng.gauss(12, 2), 1),
+                "aa_g": round(rng.gauss(0.2, 0.05), 3),
+                "la_g": round(rng.gauss(10, 2), 1),
+                "cystine_g": round(protein_g * 0.012, 2),
+                "histidine_g": round(protein_g * 0.027, 2),
+                "isoleucine_g": round(protein_g * 0.047, 2),
+                "leucine_g": round(protein_g * 0.082, 2),
+                "lysine_g": round(protein_g * 0.07, 2),
+                "methionine_g": round(protein_g * 0.025, 2),
+                "phenylalanine_g": round(protein_g * 0.044, 2),
+                "protein_g": protein_g,
+                "threonine_g": round(protein_g * 0.042, 2),
+                "tryptophan_g": round(protein_g * 0.011, 2),
+                "tyrosine_g": round(protein_g * 0.035, 2),
+                "valine_g": round(protein_g * 0.053, 2),
+                "completed": 1,
+            }
+        )
     return rows
 
 
@@ -337,6 +361,7 @@ INTERVENTIONS = {
     START_DATE + timedelta(weeks=16): "Pre-sleep routine started",
     START_DATE + timedelta(weeks=30): "Changed training time to mornings",
 }
+
 
 def build_checkin() -> list[list]:
     """Return rows (excluding the two header rows) for the check-in CSV."""
@@ -355,19 +380,16 @@ def build_checkin() -> list[list]:
         # Sleep: baseline 7h, improving after intervention 1
         if week < 16:
             sleep_mean = 7.0
-            bed_hour_mean = 23.5   # 11:30 PM
-            wake_hour_mean = 7.0
+            bed_hour_mean = 23.5  # 11:30 PM
             quality_mean = 6.5
         elif week < 30:
             sleep_mean = 7.4
             bed_hour_mean = 23.0
-            wake_hour_mean = 6.8
             quality_mean = 7.2
         else:
             # Morning training → earlier wake, earlier bed
             sleep_mean = 7.3
             bed_hour_mean = 22.5
-            wake_hour_mean = 6.0
             quality_mean = 7.0
 
         sleep_hours = round(max(4.5, min(9.5, rng.gauss(sleep_mean, 0.5))), 1)
@@ -397,59 +419,73 @@ def build_checkin() -> list[list]:
         if is_training_day:
             base_fatigue += 1.0
         soreness = max(1, min(10, round(base_fatigue + rng.gauss(0, 1))))
-        fatigue   = max(1, min(10, round(base_fatigue + rng.gauss(0, 1))))
-        joint_pain = max(1, min(5,  round(rng.gauss(2.0, 0.8))))
+        fatigue = max(1, min(10, round(base_fatigue + rng.gauss(0, 1))))
+        joint_pain = max(1, min(5, round(rng.gauss(2.0, 0.8))))
         mood = max(1, min(10, round(rng.gauss(7.0, 1.5))))
         life_stress = max(1, min(5, round(rng.gauss(2.5, 0.9))))
         motivation = max(1, min(10, round(rng.gauss(7.5, 1.5))))
 
-        if d.weekday() >= 5:   # Saturday=5, Sunday=6
+        if d.weekday() >= 5:  # Saturday=5, Sunday=6
             work_hours = 0
             work_load = 1
         else:
             work_hours = 8
-            work_load = max(1, min(10, round(rng.gauss(5.0, 1.2))))  
+            work_load = max(1, min(10, round(rng.gauss(5.0, 1.2))))
         session_quality = ""
         if is_training_day:
             session_quality = max(1, min(10, round(rng.gauss(7.5, 1.5))))
 
         # Generic notes — no real personal text
         generic_notes = [
-            "", "", "", "", "",   # mostly blank
-            "Good session", "Felt strong", "Tired today", "Solid training",
-            "Recovery day", "Long work day", "Good sleep", "Felt sluggish",
+            "",
+            "",
+            "",
+            "",
+            "",  # mostly blank
+            "Good session",
+            "Felt strong",
+            "Tired today",
+            "Solid training",
+            "Recovery day",
+            "Long work day",
+            "Good sleep",
+            "Felt sluggish",
         ]
         note = rng.choice(generic_notes)
 
         intervention = INTERVENTIONS.get(d, "")
 
-        rows.append([
-            d.strftime("%d/%m/%Y"),  # Date
-            bed_time,                # Bed Time
-            awake_time,              # Awake Time
-            sleep_hours,             # Sleep Hours
-            sleep_quality,           # Sleep Quality
-            nap_hours if nap_hours else "",  # Nap Hours
-            work_load,               # Work Physical Load
-            work_hours,              # Work Hours
-            soreness,                # Muscle Soreness
-            joint_pain,              # Joint Pain/Tightness
-            fatigue,                 # Overall Fatigue
-            mood,                    # Mood
-            life_stress,             # Life Stress
-            motivation,              # Training Motivation
-            trained_today,           # Trained Today?
-            session_quality,         # Session Quality
-            note,                    # Notes
-            intervention,            # Intervention
-        ])
+        rows.append(
+            [
+                d.strftime("%d/%m/%Y"),  # Date
+                bed_time,  # Bed Time
+                awake_time,  # Awake Time
+                sleep_hours,  # Sleep Hours
+                sleep_quality,  # Sleep Quality
+                nap_hours if nap_hours else "",  # Nap Hours
+                work_load,  # Work Physical Load
+                work_hours,  # Work Hours
+                soreness,  # Muscle Soreness
+                joint_pain,  # Joint Pain/Tightness
+                fatigue,  # Overall Fatigue
+                mood,  # Mood
+                life_stress,  # Life Stress
+                motivation,  # Training Motivation
+                trained_today,  # Trained Today?
+                session_quality,  # Session Quality
+                note,  # Notes
+                intervention,  # Intervention
+            ]
+        )
     return rows
 
 
 # ── Database writer ──────────────────────────────────────────────────────────
 
-def write_db(training: list[dict], completion: list[dict],
-             measurements: list[dict], nutrition: list[dict]) -> None:
+
+def write_db(
+    training: list[dict], completion: list[dict], measurements: list[dict], nutrition: list[dict]
+) -> None:
     DEMO_DB.unlink(missing_ok=True)
     conn = sqlite3.connect(DEMO_DB)
     c = conn.cursor()
@@ -490,11 +526,20 @@ def write_db(training: list[dict], completion: list[dict],
     # daily_measurements  (all columns that exist in real DB)
     cols = [
         "date TEXT PRIMARY KEY",
-        "weight_kg REAL", "body_fat_percent REAL",
-        "calf_left_cm REAL", "thigh_right_cm REAL", "shoulders_cm REAL",
-        "bicep_left_cm REAL", "neck_cm REAL", "hips_cm REAL",
-        "calf_right_cm REAL", "waist_cm REAL", "thigh_left_cm REAL",
-        "chest_cm REAL", "forearm_left_cm REAL", "bicep_right_cm REAL",
+        "weight_kg REAL",
+        "body_fat_percent REAL",
+        "calf_left_cm REAL",
+        "thigh_right_cm REAL",
+        "shoulders_cm REAL",
+        "bicep_left_cm REAL",
+        "neck_cm REAL",
+        "hips_cm REAL",
+        "calf_right_cm REAL",
+        "waist_cm REAL",
+        "thigh_left_cm REAL",
+        "chest_cm REAL",
+        "forearm_left_cm REAL",
+        "bicep_right_cm REAL",
         "forearm_right_cm REAL",
     ]
     c.execute(f"CREATE TABLE daily_measurements ({', '.join(cols)})")
@@ -544,15 +589,46 @@ def write_db(training: list[dict], completion: list[dict],
 # Exact two-row header matching the real Google Sheet export format
 # (load_checkin uses skiprows=2, so rows 1-2 are skipped, row 3+ is data)
 HEADER_ROW1 = [
-    "Date", "", "", "Sleep", "", "", "Work", "", "Recovery", "", "", "Wellbeing", "",
-    "Training", "", "", "Notes", "",
+    "Date",
+    "",
+    "",
+    "Sleep",
+    "",
+    "",
+    "Work",
+    "",
+    "Recovery",
+    "",
+    "",
+    "Wellbeing",
+    "",
+    "Training",
+    "",
+    "",
+    "Notes",
+    "",
 ]
 HEADER_ROW2 = [
-    "Date", "Bed Time", "Awake Time", "Sleep\nHours", "Sleep\nQuality", "Nap Hours",
-    "Work Physical\nLoad", "Work\nHours", "Muscle\nSoreness", "Joint Pain /\nTightness",
-    "Overall\nFatigue", "Mood", "Life\nStress", "Training\nMotivation",
-    "Trained\nToday?", "Session\nQuality", "Notes", "Intervention",
+    "Date",
+    "Bed Time",
+    "Awake Time",
+    "Sleep\nHours",
+    "Sleep\nQuality",
+    "Nap Hours",
+    "Work Physical\nLoad",
+    "Work\nHours",
+    "Muscle\nSoreness",
+    "Joint Pain /\nTightness",
+    "Overall\nFatigue",
+    "Mood",
+    "Life\nStress",
+    "Training\nMotivation",
+    "Trained\nToday?",
+    "Session\nQuality",
+    "Notes",
+    "Intervention",
 ]
+
 
 def write_checkin(data_rows: list[list]) -> None:
     with DEMO_CHECKIN.open("w", newline="", encoding="utf-8") as f:
@@ -563,6 +639,7 @@ def write_checkin(data_rows: list[list]) -> None:
 
 
 # ── Main ─────────────────────────────────────────────────────────────────────
+
 
 def main() -> None:
     DATA_DIR.mkdir(exist_ok=True)

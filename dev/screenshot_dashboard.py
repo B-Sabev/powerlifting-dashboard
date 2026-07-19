@@ -37,7 +37,9 @@ def main() -> int:
 
     with sync_playwright() as p:
         browser = p.chromium.launch(args=["--no-sandbox"])
-        page = browser.new_page(viewport={"width": args.viewport_width, "height": args.viewport_height})
+        page = browser.new_page(
+            viewport={"width": args.viewport_width, "height": args.viewport_height}
+        )
         page.on("console", lambda msg: errors.append(msg.text) if msg.type == "error" else None)
         page.on("pageerror", lambda exc: errors.append(str(exc)))
 

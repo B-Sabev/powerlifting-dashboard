@@ -16,11 +16,11 @@ DATA_DIR = Path(__file__).resolve().parent.parent / "data"
 # dev finds the real files first; the cloud only has the demo files.
 _REAL_DB = DATA_DIR / "powerlifting.db"
 _DEMO_DB = DATA_DIR / "demo_powerlifting.db"
-DB_PATH  = _REAL_DB if _REAL_DB.exists() else _DEMO_DB
+DB_PATH = _REAL_DB if _REAL_DB.exists() else _DEMO_DB
 
 _REAL_CHECKIN = DATA_DIR / "daily_checkin.csv"
 _DEMO_CHECKIN = DATA_DIR / "demo_daily_checkin.csv"
-CHECKIN_PATH  = _REAL_CHECKIN if _REAL_CHECKIN.exists() else _DEMO_CHECKIN
+CHECKIN_PATH = _REAL_CHECKIN if _REAL_CHECKIN.exists() else _DEMO_CHECKIN
 
 # Training log, bodyweight, and nutrition all live in the SQLite warehouse, kept
 # up to date by scripts/sync_liftosaur_training_log.py, scripts/sync_liftosaur_body_measurements.py,
@@ -34,9 +34,9 @@ MEASUREMENTS_TABLE = "daily_measurements"
 # ── Exercise constants ───────────────────────────────────────────────────────
 SBD_EXERCISES = ["Bench Press", "Squat", "Deadlift", "Sumo Deadlift"]
 EXERCISE_COLORS = {
-    "Squat":         "#4C9BE8",
-    "Bench Press":   "#E8844C",
-    "Deadlift":      "#4CE87A",
+    "Squat": "#4C9BE8",
+    "Bench Press": "#E8844C",
+    "Deadlift": "#4CE87A",
     "Sumo Deadlift": "#C44CE8",
 }
 
@@ -46,12 +46,12 @@ EXERCISE_COLORS = {
 # don't silently collide with a lift's color (e.g. green meant "Deadlift",
 # "DOTS", and "good outcome" all at once before this existed).
 PALETTE = {
-    "blue":   "#4C9BE8",
+    "blue": "#4C9BE8",
     "orange": "#E8844C",
-    "green":  "#4CE87A",
-    "red":    "#E8474C",
+    "green": "#4CE87A",
+    "red": "#E8474C",
     "purple": "#C44CE8",
-    "teal":   "#4CE8C4",
+    "teal": "#4CE8C4",
 }
 COLOR_POSITIVE = PALETTE["green"]
 COLOR_NEGATIVE = PALETTE["red"]
@@ -61,30 +61,53 @@ COLOR_DOTS = PALETTE["teal"]
 
 # ── Daily check-in columns ───────────────────────────────────────────────────
 CHECKIN_COLS = [
-    "date", "bed_time", "awake_time", "sleep_hours", "sleep_quality", "nap_hours",
-    "work_physical_load", "work_hours", "muscle_soreness", "joint_pain",
-    "overall_fatigue", "mood", "life_stress", "training_motivation",
-    "trained_today", "session_quality", "notes", "intervention",
+    "date",
+    "bed_time",
+    "awake_time",
+    "sleep_hours",
+    "sleep_quality",
+    "nap_hours",
+    "work_physical_load",
+    "work_hours",
+    "muscle_soreness",
+    "joint_pain",
+    "overall_fatigue",
+    "mood",
+    "life_stress",
+    "training_motivation",
+    "trained_today",
+    "session_quality",
+    "notes",
+    "intervention",
 ]
 NUMERIC_CHECKIN = [
-    "sleep_hours", "sleep_quality", "nap_hours", "work_physical_load",
-    "work_hours", "muscle_soreness", "joint_pain", "overall_fatigue",
-    "mood", "life_stress", "training_motivation", "session_quality",
+    "sleep_hours",
+    "sleep_quality",
+    "nap_hours",
+    "work_physical_load",
+    "work_hours",
+    "muscle_soreness",
+    "joint_pain",
+    "overall_fatigue",
+    "mood",
+    "life_stress",
+    "training_motivation",
+    "session_quality",
 ]
 CORR_PREDICTORS = {
-    "Sleep Hours":         "sleep_hours",
-    "Sleep Quality":       "sleep_quality",
-    "Work Physical Load":  "work_physical_load",
-    "Work Hours":          "work_hours",
-    "Muscle Soreness":     "muscle_soreness",
-    "Joint Pain":          "joint_pain",
-    "Overall Fatigue":     "overall_fatigue",
-    "Mood":                "mood",
-    "Life Stress":         "life_stress",
+    "Sleep Hours": "sleep_hours",
+    "Sleep Quality": "sleep_quality",
+    "Work Physical Load": "work_physical_load",
+    "Work Hours": "work_hours",
+    "Muscle Soreness": "muscle_soreness",
+    "Joint Pain": "joint_pain",
+    "Overall Fatigue": "overall_fatigue",
+    "Mood": "mood",
+    "Life Stress": "life_stress",
     "Training Motivation": "training_motivation",
-    "Rolling Sleep (3d)":  "rolling_sleep_3",
-    "Rolling Sleep (7d)":  "rolling_sleep_7",
-    "ACWR":                "acwr",
+    "Rolling Sleep (3d)": "rolling_sleep_3",
+    "Rolling Sleep (7d)": "rolling_sleep_7",
+    "ACWR": "acwr",
     "Workout Completion %": "pct_planned_completed",
 }
 
@@ -109,10 +132,10 @@ ANKLE_CM = 24.5
 # lift -> (coefficient, intercept) for Nuckols' FFM-based elite-level prediction:
 # predicted_lift = coef * (FFM / height_cm) + intercept
 NUCKOLS_COEF = {
-    "Squat":       (611.19, -10.43),
+    "Squat": (611.19, -10.43),
     "Bench Press": (427.14, -14.75),
-    "Deadlift":    (410.2, 102.5),
-    "Total":       (1448.53, 77.32),
+    "Deadlift": (410.2, 102.5),
+    "Total": (1448.53, 77.32),
 }
 
 # FFMI-normalization formula (McDonald "normalized FFMI"): raw FFMI adjusted to
@@ -140,13 +163,13 @@ KCAL_PER_KG_LEAN = 5500
 # selectbox and comparison-table rows (SRI and Social Jetlag first per user pref).
 SLEEP_METRIC_LABELS: dict[str, str] = {
     "Sleep Regularity Index (0–100)": "sri",
-    "Social Jetlag (h)":              "social_jetlag",
-    "SD of Mid-sleep (min)":          "sd_mid_sleep",
-    "SD of Bedtime (min)":            "sd_bedtime",
-    "SD of Wake time (min)":          "sd_waketime",
-    "SD of Sleep Duration (min)":     "sd_duration",
-    "Mean Sleep Efficiency (%)":      "mean_efficiency",
-    "SD of Sleep Efficiency (%)":     "sd_efficiency",
+    "Social Jetlag (h)": "social_jetlag",
+    "SD of Mid-sleep (min)": "sd_mid_sleep",
+    "SD of Bedtime (min)": "sd_bedtime",
+    "SD of Wake time (min)": "sd_waketime",
+    "SD of Sleep Duration (min)": "sd_duration",
+    "Mean Sleep Efficiency (%)": "mean_efficiency",
+    "SD of Sleep Efficiency (%)": "sd_efficiency",
 }
 # Default rolling window for sleep consistency metrics (nights).
 SLEEP_ROLL_WINDOW = 14
@@ -156,6 +179,11 @@ SLEEP_ROLL_WINDOW = 14
 # ever looks up reps == 1 (2–5 reps use Epley instead), so the reps-2/3/4 rows
 # the RTS table also publishes are dead weight here.
 RTS_TABLE = {
-    (1, 10.0): 1.000, (1, 9.5): 0.978, (1, 9.0): 0.955, (1, 8.5): 0.939,
-    (1,  8.0): 0.922, (1, 7.5): 0.907, (1, 7.0): 0.892,
+    (1, 10.0): 1.000,
+    (1, 9.5): 0.978,
+    (1, 9.0): 0.955,
+    (1, 8.5): 0.939,
+    (1, 8.0): 0.922,
+    (1, 7.5): 0.907,
+    (1, 7.0): 0.892,
 }

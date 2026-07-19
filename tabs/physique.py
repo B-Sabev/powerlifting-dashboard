@@ -40,7 +40,9 @@ def render(
     )
 
     best_e1rm = session_df.groupby("Exercise")["e1rm"].max()
-    dl_candidates = [v for v in (best_e1rm.get("Deadlift"), best_e1rm.get("Sumo Deadlift")) if pd.notna(v)]
+    dl_candidates = [
+        v for v in (best_e1rm.get("Deadlift"), best_e1rm.get("Sumo Deadlift")) if pd.notna(v)
+    ]
     default_squat = best_e1rm.get("Squat", 0.0)
     default_bench = best_e1rm.get("Bench Press", 0.0)
     default_squat = 0.0 if pd.isna(default_squat) else default_squat
@@ -50,27 +52,47 @@ def render(
     col1, col2 = st.columns(2)
     with col1:
         weight = st.number_input(
-            "Current weight (kg)", value=float(latest_weight), step=0.1, format="%.1f",
+            "Current weight (kg)",
+            value=float(latest_weight),
+            step=0.1,
+            format="%.1f",
             help=f"Latest logged: {latest_weight_date}",
         )
         body_fat = st.number_input(
-            "Current body fat (%)", value=float(latest_bf), step=0.1, format="%.1f",
+            "Current body fat (%)",
+            value=float(latest_bf),
+            step=0.1,
+            format="%.1f",
             help=f"Latest logged: {latest_bf_date}",
         )
     with col2:
-        target_ffmi = st.number_input("Target FFMI (normalized)", value=27.0, step=0.1, format="%.1f")
+        target_ffmi = st.number_input(
+            "Target FFMI (normalized)", value=27.0, step=0.1, format="%.1f"
+        )
         target_bf = st.number_input(
-            "Target body fat (%)", value=15.0, step=0.1, format="%.1f",
-            help="Used by both Calculator 2 (target composition) and Calculator 3 (Casey Butt max potential).",
+            "Target body fat (%)",
+            value=15.0,
+            step=0.1,
+            format="%.1f",
+            help=(
+                "Used by both Calculator 2 (target composition) and "
+                "Calculator 3 (Casey Butt max potential)."
+            ),
         )
 
     col3, col4, col5 = st.columns(3)
     with col3:
-        squat_1rm = st.number_input("Squat 1RM (kg)", value=round(float(default_squat), 1), step=0.5)
+        squat_1rm = st.number_input(
+            "Squat 1RM (kg)", value=round(float(default_squat), 1), step=0.5
+        )
     with col4:
-        bench_1rm = st.number_input("Bench 1RM (kg)", value=round(float(default_bench), 1), step=0.5)
+        bench_1rm = st.number_input(
+            "Bench 1RM (kg)", value=round(float(default_bench), 1), step=0.5
+        )
     with col5:
-        deadlift_1rm = st.number_input("Deadlift 1RM (kg)", value=round(float(default_deadlift), 1), step=0.5)
+        deadlift_1rm = st.number_input(
+            "Deadlift 1RM (kg)", value=round(float(default_deadlift), 1), step=0.5
+        )
 
     # ── Calculator 1 — FFMI ──────────────────────────────────────────────
     st.divider()
@@ -152,29 +174,34 @@ def render(
         for lift_name, your_1rm in {**lifts, "Total": total_1rm}.items():
             goal = nuckols_predicted(current_ffm, HEIGHT_CM, lift_name)
             efficiency = your_1rm / goal if goal else None
-            rows.append({
-                "Lift": lift_name,
-                "Your 1RM (kg)": round(your_1rm, 1),
-                "FFM-Goal (kg)": round(goal, 1),
-                "Efficiency": f"{efficiency:.0%}" if efficiency is not None else "—",
-            })
+            rows.append(
+                {
+                    "Lift": lift_name,
+                    "Your 1RM (kg)": round(your_1rm, 1),
+                    "FFM-Goal (kg)": round(goal, 1),
+                    "Efficiency": f"{efficiency:.0%}" if efficiency is not None else "—",
+                }
+            )
 
         total_goal = nuckols_predicted(current_ffm, HEIGHT_CM, "Total")
         dots_your = dots_score(total_1rm, weight)
         dots_goal = dots_score(total_goal, weight)
         dots_efficiency = dots_your / dots_goal if dots_goal else None
-        rows.append({
-            "Lift": "DOTS",
-            "Your 1RM (kg)": dots_your,
-            "FFM-Goal (kg)": dots_goal,
-            "Efficiency": f"{dots_efficiency:.0%}" if dots_efficiency is not None else "—",
-        })
+        rows.append(
+            {
+                "Lift": "DOTS",
+                "Your 1RM (kg)": dots_your,
+                "FFM-Goal (kg)": dots_goal,
+                "Efficiency": f"{dots_efficiency:.0%}" if dots_efficiency is not None else "—",
+            }
+        )
 
-        st.dataframe(pd.DataFrame(rows).set_index("Lift"), width='stretch')
+        st.dataframe(pd.DataFrame(rows).set_index("Lift"), width="stretch")
         st.caption(
             "FFM-Goal is the Nuckols-predicted lift for an elite powerlifter at your current "
             "FFM. Efficiency = Your 1RM ÷ FFM-Goal (100% = predicted elite level for your FFM). "
-            "DOTS row converts the Total row to a bodyweight-adjusted score using your current weight."
+            "DOTS row converts the Total row to a bodyweight-adjusted score using your "
+            "current weight."
         )
     else:
         st.info("Enter weight and body fat % above.")
@@ -185,21 +212,29 @@ def render(
     if target_ffm_val is not None and max_ffm is not None:
         rows = []
         for lift_name in ["Squat", "Bench Press", "Deadlift", "Total"]:
-            rows.append({
-                "Lift": lift_name,
-                "At Target FFM (Calc 2)": round(nuckols_predicted(target_ffm_val, HEIGHT_CM, lift_name), 1),
-                "At Max FFM — Casey Butt (Calc 3)": round(nuckols_predicted(max_ffm, HEIGHT_CM, lift_name), 1),
-            })
+            rows.append(
+                {
+                    "Lift": lift_name,
+                    "At Target FFM (Calc 2)": round(
+                        nuckols_predicted(target_ffm_val, HEIGHT_CM, lift_name), 1
+                    ),
+                    "At Max FFM — Casey Butt (Calc 3)": round(
+                        nuckols_predicted(max_ffm, HEIGHT_CM, lift_name), 1
+                    ),
+                }
+            )
 
         target_total = nuckols_predicted(target_ffm_val, HEIGHT_CM, "Total")
         max_total = nuckols_predicted(max_ffm, HEIGHT_CM, "Total")
-        rows.append({
-            "Lift": "DOTS",
-            "At Target FFM (Calc 2)": dots_score(target_total, target_weight),
-            "At Max FFM — Casey Butt (Calc 3)": dots_score(max_total, max_total_weight),
-        })
+        rows.append(
+            {
+                "Lift": "DOTS",
+                "At Target FFM (Calc 2)": dots_score(target_total, target_weight),
+                "At Max FFM — Casey Butt (Calc 3)": dots_score(max_total, max_total_weight),
+            }
+        )
 
-        st.dataframe(pd.DataFrame(rows).set_index("Lift"), width='stretch')
+        st.dataframe(pd.DataFrame(rows).set_index("Lift"), width="stretch")
         st.caption(
             "Projects your predicted elite-level lifts at two FFM milestones. Target FFM "
             "(Calc 2) = your chosen FFMI goal. Max FFM (Calc 3) = Casey Butt genetic ceiling. "

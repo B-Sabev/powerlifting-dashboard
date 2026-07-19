@@ -15,13 +15,13 @@ import streamlit as st
 
 from lib.constants import CHECKIN_PATH, DB_PATH
 from lib.data import (
+    build_totals_df,
     load_checkin,
     load_latest_measurements,
     load_nutrition,
     load_training,
     load_weight,
     load_workout_completion,
-    build_totals_df,
 )
 from tabs import physique, progression, recovery, sleep, weight_nutrition
 
@@ -34,19 +34,27 @@ st.set_page_config(
 
 # ── App shell ─────────────────────────────────────────────────────────────────
 st.title("Powerlifting Analytics")
-st.caption("A personal dashboard for tracking training, nutrition and recovery metrics, \
+st.caption(
+    "A personal dashboard for tracking training, nutrition and recovery metrics, \
            integrating data from Liftosaur(gym logging app), Cronometer(nutrition tracker) "
-           "and a custom daily check-in form. It analyses lift progression, sleep patterns \
-            tracks body composition changes and correlates gym performance with lifestyle factors.")
+    "and a custom daily check-in form. It analyses lift progression, sleep patterns \
+            tracks body composition changes and correlates gym performance with lifestyle factors."
+)
 
 # ── Load data ─────────────────────────────────────────────────────────────────
 if not DB_PATH.exists():
-    st.error(f"Database not found at `{DB_PATH}`. Run `python scripts/sync_liftosaur_training_log.py` to sync from Liftosaur.")
+    st.error(
+        f"Database not found at `{DB_PATH}`. Run "
+        "`python scripts/sync_liftosaur_training_log.py` to sync from Liftosaur."
+    )
     st.stop()
 
 session_df, sets_df = load_training(DB_PATH)
 if session_df.empty:
-    st.error("No training data found in the database. Run `python scripts/sync_liftosaur_training_log.py` to sync from Liftosaur.")
+    st.error(
+        "No training data found in the database. Run "
+        "`python scripts/sync_liftosaur_training_log.py` to sync from Liftosaur."
+    )
     st.stop()
 checkin_df = load_checkin(CHECKIN_PATH) if CHECKIN_PATH.exists() else None
 weight_df = load_weight(DB_PATH)
@@ -59,7 +67,13 @@ latest_weight, latest_weight_date, latest_bf, latest_bf_date = load_latest_measu
 
 # ── Tab layout ────────────────────────────────────────────────────────────────
 tab1, tab2, tab3, tab4, tab5 = st.tabs(
-    ["SBD Progression", "Recovery Correlations", "Weight & Nutrition", "Physique Calculators", "Sleep Consistency"]
+    [
+        "SBD Progression",
+        "Recovery Correlations",
+        "Weight & Nutrition",
+        "Physique Calculators",
+        "Sleep Consistency",
+    ]
 )
 
 with tab1:
