@@ -54,9 +54,9 @@ def main() -> int:
         host = urlparse(args.url).netloc
         page.route(
             "**/*",
-            lambda route: route.continue_()
-            if urlparse(route.request.url).netloc == host
-            else route.abort(),
+            lambda route: (
+                route.continue_() if urlparse(route.request.url).netloc == host else route.abort()
+            ),
         )
         # Errors these deliberate aborts provoke — not app defects.
         expected = ("metrics config", "net::ERR_FAILED")

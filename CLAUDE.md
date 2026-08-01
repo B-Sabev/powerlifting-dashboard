@@ -36,10 +36,16 @@ Three docs, no overlap by design — keep it that way when editing them:
 ```bash
 # Run tests (pure functions in lib/calculations.py)
 .venv/bin/python -m pytest
+
+# Lint / format (ruff, configured in pyproject.toml)
+.venv/bin/ruff check .
+.venv/bin/ruff format .
 ```
 
-There is a small pytest suite for `lib/calculations.py`'s pure functions (`tests/`); no
-linter or CI config in this repo.
+There is a small pytest suite for `lib/calculations.py`'s pure functions (`tests/`). Ruff is
+pinned in `requirements.txt`, so the local venv and CI run the same version; GitHub Actions
+(`.github/workflows/ci.yml`) runs `ruff check`, `ruff format --check`, and `pytest` on every
+push and PR.
 
 ## Data flow architecture
 

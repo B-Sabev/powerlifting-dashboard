@@ -363,10 +363,23 @@ INTERVENTIONS = {
 }
 
 
+# Working-day wake window (alarm-driven): 05:40 – 06:00
+WORKDAY_WAKE_EARLIEST = 5 + 40 / 60
+WORKDAY_WAKE_LATEST = 6.0
+
+
+def fmt_clock(hour: float) -> str:
+    """Format an hour-of-day float as HH:MM, wrapping into the 0-24 range."""
+    minutes = round(hour * 60) % (24 * 60)
+    return f"{minutes // 60:02d}:{minutes % 60:02d}"
+
+
 def build_checkin() -> list[list]:
     """Return rows (excluding the two header rows) for the check-in CSV."""
     # Baseline sleep changes: after intervention 1 (week 16) sleep improves slightly
-    # After intervention 2 (week 30) wake time becomes more regular.
+    # and bed times tighten. Working-day wake times are alarm-fixed throughout, so
+    # on those days the bed time is derived from wake minus sleep duration; only
+    # weekends are bed-time-driven (which is what produces the social jetlag).
     rows = []
     for d in ALL_DATES:
         # Log ~90% of days (miss Sundays occasionally + ~5% other days)
@@ -382,32 +395,44 @@ def build_checkin() -> list[list]:
             sleep_mean = 7.0
             bed_hour_mean = 23.5  # 11:30 PM
             quality_mean = 6.5
+            efficiency_mean = 0.90
         elif week < 30:
             sleep_mean = 7.4
             bed_hour_mean = 23.0
             quality_mean = 7.2
+            efficiency_mean = 0.93
         else:
-            # Morning training → earlier wake, earlier bed
+            # Morning training → earlier bed (bed_hour_mean only drives days off)
             sleep_mean = 7.3
             bed_hour_mean = 22.5
             quality_mean = 7.0
+            efficiency_mean = 0.93
 
-        sleep_hours = round(max(4.5, min(9.5, rng.gauss(sleep_mean, 0.5))), 1)
         sleep_quality = max(1, min(10, round(rng.gauss(quality_mean, 1.5))))
 
-        # Bed time: stochastic around mean, with more variability before intervention
+        # Bed/wake variability shrinks after the first intervention
         variability = 0.75 if week < 16 else 0.45
-        bed_hour = rng.gauss(bed_hour_mean, variability)
-        # Wrap to 0-24 range for display; times like 23.5 = 23:30, 24.3 = 00:18
-        bed_h = int(bed_hour) % 24
-        bed_m = int((bed_hour % 1) * 60)
-        bed_time = f"{bed_h:02d}:{bed_m:02d}"
 
-        wake_hour = bed_hour + sleep_hours + rng.gauss(0, 0.15)
-        wake_hour = wake_hour % 24
-        wake_h = int(wake_hour) % 24
-        wake_m = int((wake_hour % 1) * 60)
-        awake_time = f"{wake_h:02d}:{wake_m:02d}"
+        # Logged sleep is time asleep; time in bed is a bit longer (efficiency < 1),
+        # and it's time in bed that the bed/wake clock times must bracket.
+        sleep_hours = round(max(4.5, min(9.5, rng.gauss(sleep_mean, variability))), 1)
+        efficiency = max(0.80, min(0.99, rng.gauss(efficiency_mean, 0.035)))
+        # Snap to a whole minute so bed and wake both land on one
+        time_in_bed = round(sleep_hours / efficiency * 60) / 60
+
+        if d.weekday() < 5:
+            # Working days: alarm-driven wake between 05:40 and 06:00, so the bed
+            # time is what moves — derived from wake minus the time in bed.
+            wake_hour = round(rng.uniform(WORKDAY_WAKE_EARLIEST, WORKDAY_WAKE_LATEST) * 60) / 60
+            bed_hour = wake_hour - time_in_bed
+        else:
+            # Days off: bed time drives and wake floats (hence the social jetlag)
+            bed_hour = round(rng.gauss(bed_hour_mean, variability) * 60) / 60
+            wake_hour = bed_hour + time_in_bed
+
+        # Wrap to 0-24 for display; e.g. 23.5 = 23:30, 24.3 = 00:18, -1.4 = 22:36
+        bed_time = fmt_clock(bed_hour)
+        awake_time = fmt_clock(wake_hour)
 
         nap_hours = 0 if rng.random() > 0.15 else round(rng.uniform(0.3, 1.0), 1)
 
