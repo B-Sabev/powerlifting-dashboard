@@ -125,7 +125,7 @@ ACWR_CHRONIC_WINDOW = 28
 RIDGE_ALPHA = 1.0
 
 # ── Physique calculator constants (Tab 4) ────────────────────────────────────
-# Hardcoded per data/body_measurement_calculators.xlsx — not logged regularly.
+# Hardcoded per a personal spreadsheet (since removed from the repo) — not logged regularly.
 HEIGHT_CM = 175.0
 WRIST_CM = 17.5
 ANKLE_CM = 24.5

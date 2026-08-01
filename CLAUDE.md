@@ -123,9 +123,11 @@ a single fetch fails or you re-sync just one source/key. `training_log` is multi
 `powerlifting_dashboard.py` is a thin entrypoint (page config, data loading, `st.tabs`
 wiring) — it used to be a ~1,000-line monolith; the actual logic was split out by altitude:
 
-- **`lib/constants.py`** — data paths, table names, exercise/check-in column lists, and the
-  physique-calculator parameters (`HEIGHT_CM`/`WRIST_CM`/`ANKLE_CM`, `NUCKOLS_COEF`,
-  `RTS_TABLE`).
+- **`lib/constants.py`** — data paths, table names, exercise/check-in column lists, the shared
+  semantic color `PALETTE` (plus `COLOR_POSITIVE`/`COLOR_NEGATIVE`/`COLOR_ACCENT`/`COLOR_DOTS`,
+  kept distinct from the per-lift `EXERCISE_COLORS` so colors stay consistent across tabs and
+  don't collide with a lift's color), and the physique-calculator parameters
+  (`HEIGHT_CM`/`WRIST_CM`/`ANKLE_CM`, `NUCKOLS_COEF`, `RTS_TABLE`).
 - **`lib/calculations.py`** — pure functions, no Streamlit/DB: `estimate_e1rm` (RTS RPE table
   for 1-rep sets, Epley for 2–5 reps, 6+ reps ignored), `dots_score`, `trend_line`, the
   FFMI/Casey-Butt/Nuckols physique formulas (`ffm`, `ffmi_raw`, `ffmi_normalized`,
@@ -138,6 +140,14 @@ wiring) — it used to be a ~1,000-line monolith; the actual logic was split out
   consecutive nights, 0–100), `sleep_consistency_metrics` (full metric bundle: SRI, social
   jetlag, SD of mid-sleep/bedtime/wake/duration, mean efficiency, SD efficiency).
   Covered by `tests/test_calculations.py`.
+- **`lib/ui.py`** — Streamlit/Plotly-aware UI helpers shared across `tabs/`, kept separate from
+  `lib/calculations.py` (which stays pure and Streamlit-free) precisely because these touch
+  `st.session_state`/render widgets: `date_range_slider` (builds an `st.slider` from a
+  dataframe's date column; `st.slider` raises when min == max, so when fewer than 2 distinct
+  dates are present it renders an `st.caption` instead and returns `(d, d)`), `filter_by_range`
+  (the repeated date-mask filter), `apply_default_layout` (the shared legend/height/margin/
+  hovermode Plotly layout block, with per-call overrides for things like sleep.py's clock-time
+  y-axis), and shared hovertemplate constants (`DATE_FORMAT`, `HOVER_KG`).
 - **`lib/data.py`** — `@st.cache_data`-decorated loaders (`load_training`, `load_checkin`,
   `load_weight`, `load_nutrition`, `load_latest_measurements`, `load_workout_completion`,
   `build_totals_df`). All read from `data/powerlifting.db` except `load_checkin` (reads
@@ -176,8 +186,8 @@ wiring) — it used to be a ~1,000-line monolith; the actual logic was split out
     design (irregular days aren't representative).
   - **`tabs/physique.py` (Tab 4 — Physique Calculators)**: FFMI, target body-composition
     planner, Casey Butt max muscular potential, gains-to-ceiling, Nuckols powerlifting
-    efficiency, and projected lifts at target/max FFM — ported from
-    `data/body_measurement_calculators.xlsx`. Height/wrist/ankle are hardcoded constants
+    efficiency, and projected lifts at target/max FFM — ported from a personal spreadsheet
+    (since removed from the repo). Height/wrist/ankle are hardcoded constants
     (not logged regularly); current weight, body fat %, and S/B/D 1RM (all-time best e1RM per
     lift) are pre-filled from the DB via `load_latest_measurements()` and `session_df` but
     left editable for what-if scenarios; target FFMI and target body fat % are plain user

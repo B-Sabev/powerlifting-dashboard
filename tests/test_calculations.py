@@ -2,7 +2,7 @@
 
 Expected values are hand-derived from the formulas documented in each
 function's docstring (and, for the physique calculators, cross-checked
-against data/body_measurement_calculators.xlsx per PROJECT_LOG.md).
+against a personal spreadsheet, since removed from the repo, per PROJECT_LOG.md).
 """
 
 import math

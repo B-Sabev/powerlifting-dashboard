@@ -375,7 +375,7 @@ def sleep_consistency_metrics(timing_df: pd.DataFrame) -> dict:
 
 
 # ── Physique calculator formulas ─────────────────────────────────────────────
-# Ported 1:1 from data/body_measurement_calculators.xlsx (Calculators 1–6).
+# Ported 1:1 from a personal spreadsheet, since removed from the repo (Calculators 1–6).
 def ffm(weight_kg: float, body_fat_pct: float) -> float:
     return weight_kg * (1 - body_fat_pct / 100)
 

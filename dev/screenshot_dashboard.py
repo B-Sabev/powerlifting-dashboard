@@ -14,6 +14,7 @@ as a pass/fail check without reading the screenshots back.
 import argparse
 import sys
 from pathlib import Path
+from urllib.parse import urlparse
 
 from playwright.sync_api import sync_playwright
 
@@ -43,8 +44,28 @@ def main() -> int:
         page.on("console", lambda msg: errors.append(msg.text) if msg.type == "error" else None)
         page.on("pageerror", lambda exc: errors.append(str(exc)))
 
+        # Streamlit pulls webfonts and telemetry from third-party hosts. With no
+        # outbound network those requests hang rather than fail, and
+        # page.screenshot() blocks forever on document.fonts.ready. Abort just
+        # those hosts, so any *other* failed request still shows up as a real error.
+        # Match on host, not the full URL: Streamlit's own websocket is
+        # ws://<host>/_stcore/stream, which fails an http:// prefix test and
+        # would get aborted along with the third-party requests.
+        host = urlparse(args.url).netloc
+        page.route(
+            "**/*",
+            lambda route: route.continue_()
+            if urlparse(route.request.url).netloc == host
+            else route.abort(),
+        )
+        # Errors these deliberate aborts provoke — not app defects.
+        expected = ("metrics config", "net::ERR_FAILED")
+
+        # Wait on the tab bar, not an <h1>: the app shell responds over HTTP well
+        # before Streamlit runs the script and pushes a render over the websocket,
+        # so the heading only exists after that round-trip completes.
         page.goto(args.url, wait_until="domcontentloaded")
-        page.wait_for_selector("h1", timeout=30000)
+        page.wait_for_selector('button[role="tab"]', timeout=60000)
         page.wait_for_timeout(args.render_wait_ms)
 
         tabs = page.locator('button[role="tab"]')
@@ -54,7 +75,10 @@ def main() -> int:
         for i in range(count):
             tab = tabs.nth(i)
             label = tab.inner_text()
-            tab.click()
+            # dispatch_event rather than click(): a real click waits for
+            # "scheduled navigations to finish", which never resolves while
+            # off-origin requests are being aborted.
+            tab.dispatch_event("click")
             page.wait_for_timeout(args.render_wait_ms)
             safe_label = label.replace(" ", "_").replace("&", "and")
             fname = output_dir / f"tab_{i + 1}_{safe_label}.png"
@@ -62,6 +86,8 @@ def main() -> int:
             print(f"Screenshotted tab {i + 1}: {label} -> {fname}", file=sys.stderr)
 
         browser.close()
+
+    errors = [e for e in errors if not any(exp in e for exp in expected)]
 
     if errors:
         print("CONSOLE/PAGE ERRORS:", file=sys.stderr)

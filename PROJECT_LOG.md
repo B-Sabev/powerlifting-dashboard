@@ -71,5 +71,5 @@ _Unsorted. Check off in place when shipped, then move the line to CHANGE_LOG._
 - [ ] Combine body-measurement + FeelFit data to estimate lean-mass gain; add to Weight &
   Nutrition tab
 - [x] Database backup strategy
-- [ ] README.md
+- [x] README.md
 

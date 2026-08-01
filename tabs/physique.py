@@ -1,6 +1,6 @@
 """Tab 4 — Physique Calculators: FFMI, target body-composition planner, Casey
 Butt max muscular potential, Nuckols powerlifting efficiency, and projected
-lifts at target/max FFM. Ported from data/body_measurement_calculators.xlsx."""
+lifts at target/max FFM. Ported from a personal spreadsheet (since removed from the repo)."""
 
 import pandas as pd
 import streamlit as st

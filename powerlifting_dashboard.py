@@ -33,12 +33,14 @@ st.set_page_config(
 )
 
 # ── App shell ─────────────────────────────────────────────────────────────────
-st.title("Powerlifting Analytics")
+st.title("Powerlifting Analytics (Demo)")
 st.caption(
     "A personal dashboard for tracking training, nutrition and recovery metrics, \
-           integrating data from Liftosaur(gym logging app), Cronometer(nutrition tracker) "
+           integrating data from Liftosaur(gym logging app), Cronometer(nutrition tracker), bluetooth weight scale "
     "and a custom daily check-in form. It analyses lift progression, sleep patterns \
-            tracks body composition changes and correlates gym performance with lifestyle factors."
+            tracks body composition changes, computes calorie targets for bulk/cut phases based on historical data \
+     and correlates gym performance with lifestyle factors. Data presented here is for demonstration purpose, \
+        my real data is private and not shared publicly."
 )
 
 # ── Load data ─────────────────────────────────────────────────────────────────
